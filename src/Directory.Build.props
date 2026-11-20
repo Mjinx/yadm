@@ -1,0 +1,52 @@
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)..\Directory.Build.props" />
+
+  <PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
+  <!-- Packaging is opt-in per project so future applications do not accidentally
+       ship. Run dotnet pack explicitly rather than on every build.
+       PackageId defaults to the project name; Description belongs in each library
+       project. Version can be supplied by the release pipeline. -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>mapping;mapper;validation</PackageTags>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <EnablePackageValidation>true</EnablePackageValidation>
+  </PropertyGroup>
+
+  <!-- Fill in verified release metadata before publishing; do not ship placeholders.
+       LicenseExpression must be an SPDX identifier for the license actually chosen.
+       SDK Source Link support uses the Git remote once the repository is configured.
+       After the first stable release, set PackageValidationBaselineVersion to that
+       published version to detect unintended API breaks.
+  -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Authors>Mjinx</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Mjinx/yadm.git</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Mjinx/yadm.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+<!--
+    <PackageValidationBaselineVersion>FIRST-STABLE-VERSION</PackageValidationBaselineVersion>
+-->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+  </ItemGroup>
+</Project>

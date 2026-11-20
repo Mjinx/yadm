@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Yadm.Common\Yadm.Common.csproj" />
+    <ProjectReference Include="..\..\benchmarks\Yadm.Benchmark.Scenarios\Yadm.Benchmark.Scenarios.csproj" />
+  </ItemGroup>
+
+</Project>

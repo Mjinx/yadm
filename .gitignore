@@ -4,6 +4,7 @@
 /artifacts/
 /packages/
 TestResults/
+BenchmarkDotNet.Artifacts/
 *.nupkg
 *.snupkg
 

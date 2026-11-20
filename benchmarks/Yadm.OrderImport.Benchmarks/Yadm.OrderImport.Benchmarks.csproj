@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);IDE0005</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Yadm.Benchmark.Scenarios\Yadm.Benchmark.Scenarios.csproj" />
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+</Project>
