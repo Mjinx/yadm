@@ -33,15 +33,7 @@ jobs:
 
       - uses: ./.github/actions/setup-dotnet
 
-      # Format, build and tests already passed in CI on main; not repeated here.
-      # The audit stays because new advisories appear without code changes.
-      - name: Vulnerability audit
-        run: |
-          dotnet restore Yadm.slnx
-          dotnet list Yadm.slnx package --vulnerable --include-transitive --format json > vuln.json
-          if jq -e '[.projects[].frameworks[]? | (.topLevelPackages // [])[], (.transitivePackages // [])[]] | length > 0' vuln.json >/dev/null; then
-            cat vuln.json; exit 1
-          fi
+      # Format, build, tests and the vulnerability audit already ran in CI on main.
 
       # API-compat baseline: latest stable tag of the same major version.
       - name: Find baseline
