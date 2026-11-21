@@ -1,6 +1,6 @@
 # Yadm — Yet Another Data Mapper
 
-Contract-first mapping for .NET 10. A mapper turns input (a request DTO, a file row, a message) into
+Contract-first mapping for .NET 10 and .NET 11. A mapper turns input (a request DTO, a file row, a message) into
 your model and reports **every** problem with its path, such as `Lines[2].Quantity`, the way validation does.
 
 - **One contract.** Implement `IMapper<TSource, TTarget>` and write plain C#.
@@ -59,8 +59,8 @@ public sealed class PetMapper : IMapper<PetDto, Pet>
     }
 }
 
-// The source maps itself, like IValidatableObject.
-public sealed record AddressDto(string? Street, string? City, string? Postcode) : IMappable<Address>
+// The source maps itself.
+public sealed record AddressDto(string? Street, string? City, string? Postcode) : IMappableObject<Address>
 {
     public Address? Map(MappingContext ctx)
     {
@@ -121,7 +121,7 @@ if (ctx.TryParse(src.Quantity, out int quantity) && quantity < 1)
 ### Nested objects and collections
 
 ```csharp
-var shipTo = ctx.Map(src.ShipTo);                         // AddressDto : IMappable<Address>
+var shipTo = ctx.Map(src.ShipTo);                         // AddressDto : IMappableObject<Address>
 var pet = ctx.Map(src.Pet, petMapper);                    // with a mapper
 var billTo = ctx.MapOptional(src.BillTo);                 // null when absent, no error
 var lines = ctx.MapEach(src.Lines, (line, c) => new LineRequest(c.Required(line.Sku), c.Parse<int>(line.Quantity)));
@@ -140,9 +140,10 @@ Every helper takes its arguments in the same order, so you can guess a call you 
 2. How to map it, if the helper needs that: a parser, a dictionary to look up in, a mapper.
 3. The `out` result, for the `Try` twins.
 4. Options: `skipInvalid`, then `name`.
-5. For asynchronous helpers, the `CancellationToken`, last, as in .NET's own async APIs. Pass it right after the
-   mapper (`ctx.MapAsync(src.Pet, petMapper, ct)`) or after a name (`ctx.MapAsync(src.Pet, petMapper, "Cat", ct)`);
-   with other options, name it: `ctx.MapEachAsync(rows, rowMapper, skipInvalid: true, cancellationToken: ct)`.
+5. For asynchronous helpers, the `CancellationToken` is last, as in .NET's own async APIs. Pass it right after the
+   mapper for a single value (`ctx.MapAsync(src.Pet, petMapper, ct)`), or name it on collection mappings:
+   `ctx.MapEachAsync(rows, rowMapper, cancellationToken: ct)`. Use named options for `skipInvalid` and `name`:
+   `ctx.MapEachAsync(rows, rowMapper, skipInvalid: true, name: "Rows", cancellationToken: ct)`.
 
 So `ctx.Lookup(line.Sku, products)` reads "look up the SKU in the products", and
 `ctx.TryParse(src.Qty, out int qty)` matches `int.TryParse(text, out int result)`. Your own helpers should follow
@@ -157,7 +158,7 @@ the path; variables and parameters do not:
 | --- | --- |
 | `ctx.Required(src.Street)` | `Street` (the variable `src` is dropped) |
 | `ctx.Required(src.Customer.Email)` | `Customer.Email` |
-| `ctx.Required(Street)` inside `IMappable.Map` | `Street` |
+| `ctx.Required(Street)` inside `IMappableObject.Map` | `Street` |
 | `item.Parse<int>(line.Quantity)` inside `ctx.MapEach(src.Lines, ...)` | `Lines[2].Quantity` |
 | `ctx.Parse<int>(src.Lines[0].Quantity)` | `Lines[0].Quantity` |
 | `ctx.Lookup(customerId, customers)` | the context's own path: `customerId` is a variable |
@@ -230,17 +231,19 @@ Exceptions from repositories, including cancellation, propagate unchanged; they 
 ```csharp
 MappingResult<Pet> pet = petMapper.Map(petDto);                                          // IMapper
 MappingResult<Order> order = await orderMapper.MapAsync(orderInput, cancellationToken);  // IAsyncMapper
-MappingResult<Address> address = addressDto.Map();                                       // IMappable
+MappingResult<Address> address = addressDto.Map();                                       // IMappableObject
 MappingResult<Pet> first = petMapper.Map(petDto, MappingOptions.FailFast);               // with options
 ```
 
 | `MappingResult<T>` member | Meaning |
 | --- | --- |
 | `IsSuccess` | No errors were found. |
+| `ErrorCount` | The number of errors found, before the error-list cap. |
 | `Value` | The mapped value; throws `MappingException` (listing the errors) when the mapping failed. |
-| `Errors` | Every `MappingError`, in the order found. |
+| `Errors` | A read-only snapshot of every retained `MappingError`, in the order found. |
 | `ToDictionary()` | Messages grouped by path, for `Results.ValidationProblem` / `ValidationProblemDetails`. |
 | `PartialValue` | The value even when the mapping failed: built from the valid items when invalid ones were skipped. |
+| `HasPartialValue` | Whether a failed result retained a produced partial value; the value can itself be null or default. |
 
 | `MappingOptions` | Default | Meaning |
 | --- | --- | --- |
@@ -256,7 +259,7 @@ still reported, and `PartialValue` holds the result built from the valid ones.
 ```csharp
 var import = Mapper.Create((List<PetDto> rows, MappingContext ctx) => new Shelter(ctx.MapEach(rows, petMapper, skipInvalid: true)));
 var result = import.Map(rows);
-Log(result.Errors);                    // e.g. [1].Age: 'x' is not a valid Int32.
+Log(result.Errors);                    // e.g. [1].Age: The value is not a valid Int32.
 Save(result.PartialValue?.Pets ?? []);
 ```
 
@@ -299,9 +302,14 @@ For a value type you own, implementing `IParsable<T>` is enough: `ctx.Parse<SkuC
 
 ## Dependency injection and testing
 
-Mappers are stateless, so register them as singletons:
-`services.AddSingleton<IAsyncMapper<OrderInput, Order>, OrderMapper>()`. In tests, run the mapper and assert on
-`Errors` by `Path` and `Code`. To test a helper of your own, run it inside a function mapper:
+Choose a mapper's dependency-injection lifetime from its dependencies. A dependency-free stateless mapper, or
+one whose dependencies are safe to share, can be a singleton:
+`services.AddSingleton<IMapper<AddressInput, Address>, AddressMapper>()`. A mapper that depends on
+request-scoped repositories should have a matching scoped lifetime:
+`services.AddScoped<IAsyncMapper<OrderInput, Order>, OrderMapper>()`. Stateless mapper code does not make
+scoped or non-thread-safe dependencies safe to share.
+
+In tests, run the mapper and assert on `Errors` by `Path` and `Code`. To test a helper of your own, run it inside a function mapper:
 `Mapper.Create((Src src, MappingContext ctx) => ctx.Email(src.Contact)).Map(src)`. To stub a service that returns
 results, use `MappingResult<T>.Success(value)` or `MappingResult<T>.Failure(errors)`.
 
@@ -312,14 +320,19 @@ results, use `MappingResult<T>.Success(value)` or `MappingResult<T>.Failure(erro
 - A mapper returning `null` for a required value without reporting an error is a bug and throws
   `InvalidOperationException` (`MapOptional` accepts `null`). So does a nested function that reports to its
   parent's context instead of the one it receives.
-- With `StopOnFirstError`, nothing after the first error is checked and no further collection items are read.
+- With `StopOnFirstError`, built-in helpers stop before further parsing, lookup, or validation work, and no
+  further collection items are read. Mapper code and argument evaluation still need explicit `IsStopped` or
+  `HasErrors` checks where they perform their own work.
+- Cancellation is checked before async mapping starts and before the library advances asynchronous collection
+  enumeration. Arbitrary mapper code and blocking source enumerators still need to cooperate with the token.
 - A `MappingContext` belongs to one mapping and is not thread-safe.
 
 ## Layout
 
 ```text
 src\Yadm.Common\
-  IMapper.cs, IAsyncMapper.cs, IMappable.cs   The contracts
+  IMapper.cs, IAsyncMapper.cs,
+  IMappableObject.cs, IAsyncMappableObject.cs The contracts
   MappingContext.cs, MappingOptions.cs         The state of one mapping
   MappingResult.cs, MappingError.cs,
   MappingException.cs                          The outcome
@@ -448,8 +461,9 @@ and workloads, not the libraries in every application.
 
 ## Build and test
 
-Install the .NET 10 SDK (`global.json` asks for feature band 10.0.400 or later), then run from the repository
-root:
+Install the .NET 11 SDK selected by `global.json` (`11.0.100` or a compatible later feature band) and a
+.NET 10 targeting pack, then run from the repository root. The libraries multi-target `net10.0` and
+`net11.0`; tests and benchmarks run on `net11.0`.
 
 ```powershell
 dotnet build .\Yadm.slnx
@@ -465,7 +479,8 @@ dotnet test --solution .\Yadm.slnx --coverlet
 ```
 
 `Directory.Build.props` documents the shared build policy: nullable reference types, the latest C# version the
-pinned SDK supports (C# 14), the .NET 10 analyzers, build-time code-style diagnostics, and warnings as errors.
+pinned SDK supports, analyzer level `10.0`, build-time code-style diagnostics, and warnings as errors. The
+analyzer level is intentionally configured separately from the library target frameworks.
 Compiler output is deterministic; CI source-path normalization is enabled for `CI=true`, GitHub Actions,
 and Azure Pipelines. Other CI systems should pass `-p:ContinuousIntegrationBuild=true`.
 
@@ -483,15 +498,54 @@ dotnet restore .\Yadm.slnx --force-evaluate
 
 `src\Directory.Build.props` imports the shared root defaults and adds source-only XML documentation and
 packaging settings, including the README item. Test projects do not inherit these source-only settings.
-Only explicitly opted-in libraries are packable; tests are not. Packages include this README, library XML
-documentation, and a separate `.snupkg` symbol package. Before publishing, complete the commented release
-metadata in `src\Directory.Build.props` with the actual owner, license, and repository URLs. Configure the Git
-remote for SDK-provided Source Link support. Once a stable package is published, configure its version as
-the package-validation baseline to check subsequent releases for API compatibility.
+Only explicitly opted-in libraries are packable; tests are not. Library builds do not create packages.
+Packages include this README, library XML documentation, and a separate `.snupkg` symbol package. Before
+publishing, keep the owner, version, license, and repository metadata in `src\Directory.Build.props` aligned
+with the repository. SDK-provided Source Link uses the configured Git remote. The release workflow uses the
+previous stable package version as the package-validation baseline for patch and minor releases to detect API
+compatibility problems. Major releases intentionally permit breaking API changes.
 
 ```powershell
 dotnet pack .\src\Yadm.Common\Yadm.Common.csproj -c Release -p:Version=0.1.0
+dotnet pack .\src\Yadm.SystemTextJson\Yadm.SystemTextJson.csproj -c Release -p:Version=0.1.0
 ```
+
+## Continuous integration and releases
+
+Pull requests build and test on both library target frameworks and upload a prerelease package artifact such
+as `0.1.1-rc.prN.RUN`. PR packages are deliberately not pushed to NuGet: untrusted fork code never receives
+registry credentials.
+
+The release version has one source of truth:
+
+- Before the first release, `0.1.0` in `src\Directory.Build.props` is the bootstrap version.
+- After a stable release, the highest `vMAJOR.MINOR.PATCH` Git tag is the source of truth.
+
+PR artifacts use the next patch version as a prerelease, for example `0.1.1-rc.pr42.7` after tag `v0.1.0`.
+Before any stable tag exists, they use the bootstrap version, for example `0.1.0-rc.pr42.7`.
+The selected release version is not copied back into `src\Directory.Build.props`; release workflows pass
+both `Version` and `PackageVersion` explicitly. This keeps Git tags, assembly metadata, and NuGet package
+metadata aligned without making a release depend on a version-bump commit.
+
+After a pull request is merged into `main`, the workflow comments with a link to **Prepare release**. A
+maintainer chooses `major`, `minor`, `patch`, or `current` for the first release. The workflow reruns the
+release build, tests, dependency audit, pack, and `net10.0`/`net11.0` consumer smoke tests; pushes the packages
+to NuGet.org; then creates the GitHub release with generated notes and package assets. GitHub publication
+happens last, so a failed NuGet publish does not leave a public tag and release that must be recreated.
+Stable packages also receive a GitHub build-provenance attestation before publication.
+
+GitHub release notes group merged pull requests by labels configured in `.github/release.yml`. The first
+release uses `current` and the bootstrap version. Later releases use the highest stable
+`vMAJOR.MINOR.PATCH` tag as the base. Tags and package versions are created together by the workflow.
+
+Before the first stable publication:
+
+1. Create the protected GitHub `release` environment and require maintainer approval if desired.
+2. On NuGet.org, add a trusted publishing policy for owner `Mjinx`, repository `yadm`, workflow
+   `release.yml`, and environment `release`. This uses a short-lived OIDC credential instead of a
+   long-lived API key.
+3. Protect `main` and require the build check.
+4. Add the changelog labels listed in `.github/release.yml`.
 
 `tests\Directory.Build.props` likewise imports the root defaults, and holds what every test project shares: the
 MTP executable settings and the xUnit.net v3, Shouldly, NSubstitute and coverlet references. A test project

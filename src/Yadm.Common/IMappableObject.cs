@@ -6,10 +6,12 @@ namespace Yadm.Common;
 /// </summary>
 /// <typeparam name="TTarget">The type the object maps to.</typeparam>
 /// <remarks>
-/// Run it with <see cref="Mapper.Map{TTarget}(IMappable{TTarget}, MappingOptions?)"/>, or nest it with
-/// <see cref="MappingContextNestedExtensions.Map{TTarget}(MappingContext, IMappable{TTarget}?, string?, string)"/>.
+/// Run it with <see cref="Mapper.Map{TTarget}(IMappableObject{TTarget}, MappingOptions?)"/>, or nest it with
+/// <see cref="MappingContextNestedExtensions.Map{TTarget}(MappingContext, IMappableObject{TTarget}?, string?, string)"/>.
+/// Objects that need asynchronous work can implement <see cref="IAsyncMappableObject{TTarget}"/> instead, or both
+/// contracts when both operations are meaningful.
 /// </remarks>
-public interface IMappable<out TTarget>
+public interface IMappableObject<out TTarget>
 {
     /// <summary>Maps this object, reporting problems to <paramref name="context"/>.</summary>
     /// <param name="context">Collects errors and knows where in the source the mapping is.</param>

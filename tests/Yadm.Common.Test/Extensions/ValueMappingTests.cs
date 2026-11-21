@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Shouldly;
 using static Yadm.Common.MappingErrorCodes;
 
@@ -71,7 +72,7 @@ public class ValueMappingTests
         errors.ShouldBe(
         [
             new MappingError("Missing", Required, "A value is required."),
-            new MappingError("Bad", Invalid, "'4x' is not a valid Int32.", "4x")
+            new MappingError("Bad", Invalid, "The value is not a valid Int32.", "4x")
         ]);
     }
 
@@ -159,6 +160,66 @@ public class ValueMappingTests
         }).IsSuccess.ShouldBeTrue();
     }
 
+    [Theory]
+    [InlineData("2026-11-05")]
+    [InlineData("2026-11-05T10:30:00")]
+    [InlineData("2026-11-05T10:30:00Z")]
+    [InlineData("2026-11-05T10:30:00.1234567+02:30")]
+    [InlineData("2026-11-05T10:30:00.1234567890123456-14:00")]
+    public void IsoDateTimeSyntaxMatchesSystemTextJson(string text)
+    {
+        var oracle = JsonSerializer.Deserialize<DateTimeOffset>($"\"{text}\"");
+
+        TestMapping.Run(context =>
+        {
+            var actual = context.Parse<DateTimeOffset>(text);
+            oracle.Offset.ShouldBe(actual.Offset);
+            actual.Ticks.ShouldBe(oracle.Ticks);
+        }).IsSuccess.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData("2026-11-05 10:30:00")]
+    [InlineData("2026-11-05 10:30 PM")]
+    [InlineData("2026-11-05T10:30:00+2")]
+    [InlineData("2026-11-05T10:30:00+14:01")]
+    [InlineData("2026-11-05T10:30:00.12345678901234567Z")]
+    [InlineData("2026-11-05T10:30:00Z trailing")]
+    [InlineData("2026-02-30T10:30:00Z")]
+    [InlineData(" 2026-11-05T10:30:00Z")]
+    [InlineData("2026-11-05T10:30:00Z ")]
+    [InlineData("2026-11-05t10:30:00z")]
+    public void DatesRejectAnythingOutsideTheCompleteSupportedIsoSyntax(string text)
+    {
+        Should.Throw<JsonException>(() => JsonSerializer.Deserialize<DateTimeOffset>($"\"{text}\""));
+
+        var errors = TestMapping.Errors(context =>
+        {
+            context.Parse<DateTimeOffset>(text, "Offset");
+            context.Parse<DateTime>(text, "DateTime");
+        });
+
+        errors.Select(error => (error.Path, error.Code)).ShouldBe(
+            [("Offset", Invalid), ("DateTime", Invalid)]);
+    }
+
+    [Theory]
+    [InlineData("2026-11-05T10:30:00Z")]
+    [InlineData("2026-11-05 10:30:00")]
+    [InlineData("2026-11-05T10:30")]
+    public void DateOnlyAcceptsOnlyACompleteDate(string text) =>
+        TestMapping.Errors(context => context.Parse<DateOnly>(text, "On"))
+            .ShouldHaveSingleItem().Code.ShouldBe(Invalid);
+
+    [Fact]
+    public void IsoFractionsAreTruncatedToTicksLikeSystemTextJson()
+    {
+        var text = "2026-11-05T10:30:00.1234567890123456Z";
+        var oracle = JsonSerializer.Deserialize<DateTimeOffset>($"\"{text}\"");
+
+        TestMapping.Run(context => context.Parse<DateTimeOffset>(text).ShouldBe(oracle)).IsSuccess.ShouldBeTrue();
+    }
+
     [Fact]
     public void AMessagePassedAsTheNameIsRejected()
     {
@@ -182,6 +243,30 @@ public class ValueMappingTests
             converted.ShouldBe(new DateTime(2026, 11, 5, 8, 0, 0));
             context.Parse<DateTime>("2026-11-05").Kind.ShouldBe(DateTimeKind.Utc);
         }).IsSuccess.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void IsoDateParsingIgnoresCurrentCultureAndConfiguredFormatProvider()
+    {
+        var original = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
+            var options = new MappingOptions { FormatProvider = CultureInfo.GetCultureInfo("de-DE") };
+
+            var result = TestMapping.Errors(context =>
+            {
+                context.Parse<DateTimeOffset>("2026-11-05T10:30:00+02:00")
+                    .ShouldBe(new DateTimeOffset(2026, 11, 5, 10, 30, 0, TimeSpan.FromHours(2)));
+                context.Parse<DateOnly>("05.11.2026", "Localized");
+            }, options);
+
+            result.ShouldHaveSingleItem().Code.ShouldBe(Invalid);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
     }
 
     [Theory]
@@ -242,7 +327,7 @@ public class ValueMappingTests
         var error = TestMapping.Errors(context => context.Parse<OrderType>(text, "Type")).ShouldHaveSingleItem();
 
         error.ShouldBe(new MappingError("Type", Invalid,
-            $"'{text}' is not a valid OrderType. Expected one of: Standard, Express, Collection.", text));
+            "The value is not a valid OrderType. Expected one of: Standard, Express, Collection.", text));
     }
 
     [Fact]
@@ -268,7 +353,8 @@ public class ValueMappingTests
             context.Parse<SkuCode>(src.Bad).ShouldBeNull();
         });
 
-        errors.ShouldHaveSingleItem().ShouldBe(new MappingError("Bad", Invalid, "'abc' is not a valid SkuCode.", "abc"));
+        errors.ShouldHaveSingleItem().ShouldBe(
+            new MappingError("Bad", Invalid, "The value is not a valid SkuCode.", "abc"));
     }
 
     [Fact]
@@ -286,7 +372,7 @@ public class ValueMappingTests
         });
 
         errors.ShouldHaveSingleItem()
-            .ShouldBe(new MappingError("DueOn", Invalid, "'2026-11-05' is not a valid DateOnly.", "2026-11-05"));
+            .ShouldBe(new MappingError("DueOn", Invalid, "The value is not a valid DateOnly.", "2026-11-05"));
     }
 
     [Fact]
@@ -318,7 +404,46 @@ public class ValueMappingTests
             context.Parse(src.Bad, (int raw, out SkuCode? code) => SkuCode.TryCreate(raw, out code));
         });
 
-        errors.ShouldHaveSingleItem().ShouldBe(new MappingError("Bad", Invalid, "'-1' is not a valid SkuCode.", -1));
+        errors.ShouldHaveSingleItem().ShouldBe(
+            new MappingError("Bad", Invalid, "The value is not a valid SkuCode.", -1));
+    }
+
+    [Fact]
+    public void SuccessfulRequiredParsersMustProduceUsableReferenceValues()
+    {
+        GC.KeepAlive(new NullProducingReference());
+        GC.KeepAlive(new NullProducingCode());
+
+        Should.Throw<InvalidOperationException>(() =>
+            TestMapping.Run(context => context.Parse<string, NullProducingReference>("x", AlwaysNullParser)));
+
+        TestMapping.Run(context =>
+            context.Parse<string, int?>("x", AlwaysNullNullableValueParser).ShouldBeNull()).IsSuccess.ShouldBeTrue();
+
+        Should.Throw<InvalidOperationException>(() =>
+            TestMapping.Run(context => context.Parse<NullProducingCode>("x")));
+    }
+
+    [Fact]
+    public void ParserFailuresAndFalseResultsKeepTheirNormalContract()
+    {
+        var input = new { Text = "x", Number = 42 };
+        var errors = TestMapping.Errors(context =>
+        {
+            context.Parse(input.Text, (string _, out SkuCode? result) =>
+            {
+                result = null;
+                return false;
+            }).ShouldBeNull();
+            context.Parse(input.Number, (int _, out int result) =>
+            {
+                result = 0;
+                return false;
+            }).ShouldBe(0);
+        });
+
+        errors.ShouldAllBe(error => error.Code == Invalid);
+        errors.Select(error => error.AttemptedValue).ShouldBe(["x", 42]);
     }
 
     [Fact]
@@ -344,7 +469,7 @@ public class ValueMappingTests
         });
 
         errors.ShouldHaveSingleItem()
-            .ShouldBe(new MappingError("Other", NotFound, "Product 'SKU-9' was not found.", "SKU-9"));
+            .ShouldBe(new MappingError("Other", NotFound, "Product was not found.", "SKU-9"));
     }
 
     [Fact]
@@ -400,6 +525,84 @@ public class ValueMappingTests
         errors.Select(error => (error.Path, error.Code)).ShouldBe([("Quantity", Invalid), ("Other", "OutOfRange")]);
     }
 
+    [Fact]
+    public void FailFastStopsScalarHelperWorkBeforeTheNextHelperRuns()
+    {
+        var calls = 0;
+        var dictionary = new CountingDictionary<string, Product>();
+
+        var errors = TestMapping.Errors(context =>
+        {
+            context.Parse<int>("x", "First");
+
+            context.Required<string>(null, "Name").ShouldBeNull();
+            context.TryRequired((int?)null, out var required).ShouldBeFalse();
+            required.ShouldBe(0);
+            context.Parse<int>("1", "Count").ShouldBe(0);
+            context.TryParse("1", out int parsed).ShouldBeFalse();
+            parsed.ShouldBe(0);
+            context.Parse("1", (string _, out int value) =>
+            {
+                calls++;
+                value = 1;
+                return true;
+            }, "Custom").ShouldBe(0);
+            context.TryParse("1", (string _, out int value) =>
+            {
+                calls++;
+                value = 1;
+                return true;
+            }, out _).ShouldBeFalse();
+            context.Parse<OrderType>("Standard", "Type").ShouldBe(default);
+            context.ParseOptional<OrderType>("Standard", "OptionalType").ShouldBeNull();
+            context.ParseOptional<SkuCode>("ABC-1", "OptionalCode").ShouldBeNull();
+            context.Lookup("SKU-1", dictionary, "Product").ShouldBeNull();
+            context.TryLookup("SKU-1", dictionary, out var product).ShouldBeFalse();
+            product.ShouldBeNull();
+        }, MappingOptions.FailFast);
+
+        errors.ShouldHaveSingleItem().Path.ShouldBe("First");
+        calls.ShouldBe(0);
+        dictionary.Queries.ShouldBe(0);
+    }
+
+    [Fact]
+    public void BuiltInScalarMessagesDoNotEchoInputButKeepAttemptedValues()
+    {
+        const string Canary = "SENSITIVE-CANARY-7f2b";
+        var products = new Dictionary<string, Product>();
+
+        var result = TestMapping.Run(context =>
+        {
+            context.Parse<int>(Canary, "Count");
+            context.Parse<OrderType>(Canary, "Type");
+            context.Lookup(Canary, products, "Product");
+        });
+
+        var errors = result.Errors;
+        errors.Count.ShouldBe(3);
+        errors.Select(error => error.AttemptedValue).ShouldAllBe(value => Equals(value, Canary));
+        errors.Select(error => error.Message).ShouldAllBe(message => !message.Contains(Canary));
+        errors.Select(error => error.Code).ShouldBe([Invalid, Invalid, NotFound]);
+        result.ToDictionary().Values.SelectMany(messages => messages)
+            .ShouldAllBe(message => !message.Contains(Canary));
+        Should.Throw<MappingException>(() => _ = result.Value).Message.ShouldNotContain(Canary);
+    }
+
+    private static bool AlwaysNullParser(string input, out NullProducingReference? result)
+    {
+        _ = input;
+        result = null;
+        return true;
+    }
+
+    private static bool AlwaysNullNullableValueParser(string input, out int? result)
+    {
+        _ = input;
+        result = null;
+        return true;
+    }
+
     [Flags]
     private enum Access
     {
@@ -407,5 +610,46 @@ public class ValueMappingTests
         Write = 2,
         ReadWrite = Read | Write,
         Execute = 4
+    }
+
+    private sealed class NullProducingReference;
+
+    private sealed class NullProducingCode : IParsable<NullProducingCode>
+    {
+        public static NullProducingCode Parse(string s, IFormatProvider? provider) =>
+            throw new NotSupportedException();
+
+        public static bool TryParse(
+            [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] string? s,
+            IFormatProvider? provider,
+            [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out NullProducingCode result)
+        {
+            result = null!;
+            return true;
+        }
+    }
+
+    private sealed class CountingDictionary<TKey, TValue> : IReadOnlyDictionary<TKey, TValue> where TKey : notnull
+    {
+        public int Queries { get; private set; }
+        public IEnumerable<TKey> Keys => [];
+        public IEnumerable<TValue> Values => [];
+        public int Count => 0;
+
+        public TValue this[TKey key] => throw new KeyNotFoundException();
+
+        public bool ContainsKey(TKey key) => false;
+
+        public bool TryGetValue(TKey key, out TValue value)
+        {
+            Queries++;
+            value = default!;
+            return false;
+        }
+
+        public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator() =>
+            Enumerable.Empty<KeyValuePair<TKey, TValue>>().GetEnumerator();
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

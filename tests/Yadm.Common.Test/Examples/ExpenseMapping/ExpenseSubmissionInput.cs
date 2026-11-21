@@ -5,7 +5,7 @@ public sealed record ExpenseSubmissionInput(
     string? EmployeeId,
     string? Currency,
     IReadOnlyList<ExpenseLineInput>? Lines
-) : IMappable<ExpenseClaim>
+) : IMappableObject<ExpenseClaim>
 {
     public ExpenseClaim? Map(MappingContext context)
     {
@@ -23,7 +23,7 @@ public sealed record ExpenseLineInput(
     string? Merchant,
     string? SpentOn,
     string? Amount
-) : IMappable<ExpenseLine>
+) : IMappableObject<ExpenseLine>
 {
     public ExpenseLine? Map(MappingContext context)
     {

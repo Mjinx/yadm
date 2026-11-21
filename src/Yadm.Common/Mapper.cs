@@ -19,11 +19,12 @@ public static class Mapper
         return context.Complete(mapper.Map(source, context), mapper);
     }
 
-    /// <summary>Maps this object with its own <see cref="IMappable{TTarget}.Map"/> method.</summary>
+    /// <summary>Maps this object with its own <see cref="IMappableObject{TTarget}.Map"/> method.</summary>
     /// <param name="source">The object to map.</param>
     /// <param name="options">The options to run with; <see cref="MappingOptions.Default"/> when omitted.</param>
     /// <exception cref="InvalidOperationException">The object returned null without reporting an error.</exception>
-    public static MappingResult<TTarget> Map<TTarget>(this IMappable<TTarget> source, MappingOptions? options = null)
+    public static MappingResult<TTarget> Map<TTarget>(this IMappableObject<TTarget> source,
+        MappingOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         var context = new MappingContext(options);
@@ -50,9 +51,34 @@ public static class Mapper
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(mapper);
+        cancellationToken.ThrowIfCancellationRequested();
         var context = new MappingContext(options);
         var value = await mapper.MapAsync(source, context, cancellationToken).ConfigureAwait(false);
         return context.Complete(value, mapper);
+    }
+
+    /// <summary>Maps this object with its own asynchronous mapping method, using the default options.</summary>
+    /// <param name="source">The object to map.</param>
+    /// <param name="cancellationToken">Cancels the mapping's lookups.</param>
+    /// <exception cref="InvalidOperationException">The object returned null without reporting an error.</exception>
+    public static ValueTask<MappingResult<TTarget>> MapAsync<TTarget>(
+        this IAsyncMappableObject<TTarget> source, CancellationToken cancellationToken = default) =>
+        source.MapAsync(MappingOptions.Default, cancellationToken);
+
+    /// <summary>Maps this object with its own asynchronous mapping method.</summary>
+    /// <param name="source">The object to map.</param>
+    /// <param name="options">The options to run with; <see cref="MappingOptions.Default"/> when null.</param>
+    /// <param name="cancellationToken">Cancels the mapping's lookups.</param>
+    /// <exception cref="InvalidOperationException">The object returned null without reporting an error.</exception>
+    public static async ValueTask<MappingResult<TTarget>> MapAsync<TTarget>(
+        this IAsyncMappableObject<TTarget> source, MappingOptions? options,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        cancellationToken.ThrowIfCancellationRequested();
+        var context = new MappingContext(options);
+        var value = await source.MapAsync(context, cancellationToken).ConfigureAwait(false);
+        return context.Complete(value, source);
     }
 
     /// <summary>

@@ -13,7 +13,9 @@ namespace Yadm.Common;
 /// child also counts as an error of its parents, which is what <see cref="HasErrors"/> reports.
 /// </para>
 /// <para>The helpers that read values (<c>Required</c>, <c>Parse</c>, <c>Map</c>, ...) are extension methods.
-/// Custom helpers can be written the same way, using only the public members of this class.</para>
+/// Custom helpers can be written the same way, using only the public members of this class. Built-in helpers stop
+/// doing their own work after a fail-fast error, but caller argument evaluation and arbitrary mapper code are outside
+/// that boundary.</para>
 /// <para>A context is not thread-safe; map items one at a time.</para>
 /// </remarks>
 public sealed class MappingContext
@@ -59,7 +61,7 @@ public sealed class MappingContext
 
     /// <summary>
     /// True when <see cref="MappingOptions.StopOnFirstError"/> is set and an error was reported. Nothing else is
-    /// recorded, and no further collection items are read.
+    /// recorded, and built-in helpers and collection mappings do no further work.
     /// </summary>
     public bool IsStopped => Options.StopOnFirstError && _root._errorsFound > 0;
 
@@ -166,7 +168,8 @@ public sealed class MappingContext
         }
 
         // The value survives only when every error belonged to a skipped item.
-        return MappingResult<T>.Failure(HasErrors ? default : value, errors, _errorsFound);
+        var hasPartialValue = !HasErrors;
+        return MappingResult<T>.Failure(hasPartialValue ? value : default, errors, _errorsFound, hasPartialValue);
     }
 
     private void Record(string? member, string code, string message, object? attemptedValue)

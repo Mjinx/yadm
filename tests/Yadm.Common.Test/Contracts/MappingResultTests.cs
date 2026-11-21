@@ -12,6 +12,8 @@ public class MappingResultTests
         var result = MappingResult<string>.Success("mapped");
 
         result.IsSuccess.ShouldBeTrue();
+        result.HasPartialValue.ShouldBeFalse();
+        result.ErrorCount.ShouldBe(0);
         result.Errors.ShouldBeEmpty();
         result.Value.ShouldBe("mapped");
         result.PartialValue.ShouldBe("mapped");
@@ -24,6 +26,8 @@ public class MappingResultTests
         var result = MappingResult<string>.Failure([StreetMissing]);
 
         result.IsSuccess.ShouldBeFalse();
+        result.HasPartialValue.ShouldBeFalse();
+        result.ErrorCount.ShouldBe(1);
         result.PartialValue.ShouldBeNull();
         result.ToString().ShouldBe("Failure: 1 error(s)");
         var exception = Should.Throw<MappingException>(() => result.Value);
@@ -37,7 +41,12 @@ public class MappingResultTests
     {
         Should.Throw<ArgumentNullException>(() => MappingResult<string>.Success(null!));
 
-        MappingResult<int?>.Success(null).IsSuccess.ShouldBeTrue();
+        var success = MappingResult<int?>.Success(null);
+
+        success.IsSuccess.ShouldBeTrue();
+        success.HasPartialValue.ShouldBeFalse();
+        success.ErrorCount.ShouldBe(0);
+        success.PartialValue.ShouldBeNull();
     }
 
     [Fact]
@@ -45,6 +54,61 @@ public class MappingResultTests
     {
         Should.Throw<ArgumentException>(() => MappingResult<string>.Failure([]));
         Should.Throw<ArgumentException>(() => MappingResult<string>.Failure([StreetMissing, null!]));
+    }
+
+    [Fact]
+    public void AFailureOwnsItsErrorSnapshotAndKeepsItsOutcome()
+    {
+        var source = new List<MappingError> { StreetMissing };
+
+        var result = MappingResult<string>.Failure(source);
+        source.Clear();
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorCount.ShouldBe(1);
+        result.Errors.ShouldBe([StreetMissing]);
+        Should.Throw<MappingException>(() => result.Value);
+        Should.Throw<NotSupportedException>(() => ((ICollection<MappingError>)result.Errors).Clear());
+        Should.Throw<NotSupportedException>(() => ((IList<MappingError>)result.Errors)[0] =
+            new MappingError("", "Other", "Other."));
+    }
+
+    [Fact]
+    public void AnExceptionOwnsItsErrorSnapshot()
+    {
+        var source = new List<MappingError> { StreetMissing };
+
+        var exception = new MappingException(source);
+        source.Clear();
+
+        exception.Errors.ShouldBe([StreetMissing]);
+        exception.Message.ShouldContain("ShipTo.Street: A value is required.");
+        Should.Throw<NotSupportedException>(() => ((ICollection<MappingError>)exception.Errors).Clear());
+        Should.Throw<NotSupportedException>(() => ((IList<MappingError>)exception.Errors)[0] =
+            new MappingError("", "Other", "Other."));
+    }
+
+    [Fact]
+    public void AResultValueExceptionReusesTheOwnedSnapshot()
+    {
+        var result = MappingResult<string>.Failure([StreetMissing]);
+
+        var exception = Should.Throw<MappingException>(() => result.Value);
+
+        exception.Errors.ShouldBeSameAs(result.Errors);
+    }
+
+    [Fact]
+    public void DictionaryCopiesAreIndependent()
+    {
+        var result = MappingResult<string>.Failure([StreetMissing]);
+
+        var first = result.ToDictionary();
+        first["ShipTo.Street"][0] = "Changed.";
+        first.Clear();
+
+        result.ToDictionary()["ShipTo.Street"].ShouldBe(["A value is required."]);
+        result.Errors.ShouldBe([StreetMissing]);
     }
 
     [Fact]
@@ -78,6 +142,22 @@ public class MappingResultTests
     }
 
     [Fact]
+    public void TheExceptionRejectsANullErrorListBeforeReadingIt()
+    {
+        var exception = Should.Throw<ArgumentNullException>(
+            () => new MappingException((IReadOnlyList<MappingError>)null!));
+
+        exception.ParamName.ShouldBe("errors");
+    }
+
+    [Fact]
+    public void TheExceptionNeedsAnErrorAndNoNullErrors()
+    {
+        Should.Throw<ArgumentException>(() => new MappingException([]));
+        Should.Throw<ArgumentException>(() => new MappingException([StreetMissing, null!]));
+    }
+
+    [Fact]
     public void AnErrorDescribesItselfAndNeedsAllItsParts()
     {
         StreetMissing.ToString().ShouldBe("ShipTo.Street: A value is required.");
@@ -86,5 +166,37 @@ public class MappingResultTests
         Should.Throw<ArgumentNullException>(() => new MappingError(null!, "Code", "Message."));
         Should.Throw<ArgumentNullException>(() => new MappingError("Path", null!, "Message."));
         Should.Throw<ArgumentNullException>(() => new MappingError("Path", "Code", null!));
+    }
+
+    [Fact]
+    public void ErrorInitializersAndWithUpdatesPreserveRequiredFieldInvariants()
+    {
+        Should.Throw<ArgumentNullException>(() => new MappingError("", "Code", "Message.") { Path = null! })
+            .ParamName.ShouldBe("Path");
+        Should.Throw<ArgumentNullException>(() => new MappingError("", "Code", "Message.") { Code = null! })
+            .ParamName.ShouldBe("Code");
+        Should.Throw<ArgumentNullException>(() => new MappingError("", "Code", "Message.") { Message = null! })
+            .ParamName.ShouldBe("Message");
+
+        Should.Throw<ArgumentNullException>(() => StreetMissing with { Path = null! }).ParamName.ShouldBe("Path");
+        Should.Throw<ArgumentNullException>(() => StreetMissing with { Code = null! }).ParamName.ShouldBe("Code");
+        Should.Throw<ArgumentNullException>(() => StreetMissing with { Message = null! })
+            .ParamName.ShouldBe("Message");
+    }
+
+    [Fact]
+    public void ValidErrorUpdatesKeepRecordBehavior()
+    {
+        var updated = StreetMissing with { Path = "", Message = "Updated." };
+        var (path, code, message, attemptedValue) = updated;
+
+        path.ShouldBe("");
+        code.ShouldBe(MappingErrorCodes.Required);
+        message.ShouldBe("Updated.");
+        attemptedValue.ShouldBeNull();
+        updated.ShouldBe(new MappingError("", MappingErrorCodes.Required, "Updated."));
+        updated.GetHashCode().ShouldBe(new MappingError("", MappingErrorCodes.Required, "Updated.").GetHashCode());
+        updated.ToString().ShouldBe("Updated.");
+        MappingResult<string>.Failure([updated]).ToDictionary()[""].ShouldBe(["Updated."]);
     }
 }

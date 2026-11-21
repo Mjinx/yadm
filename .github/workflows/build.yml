@@ -1,0 +1,87 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+            11.0.x
+
+      - name: Determine package version
+        id: version
+        shell: bash
+        run: |
+          base_version="$(dotnet msbuild ./src/Yadm.Common/Yadm.Common.csproj -nologo -getProperty:Version | jq -r .Properties.Version)"
+          latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | head -n 1)"
+          if [[ -n "$latest" ]]; then
+            base_version="${latest#v}"
+          fi
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            IFS=. read -r major minor patch <<< "$base_version"
+            if [[ -n "$latest" ]]; then
+              version="${major}.${minor}.$((patch + 1))-rc.pr${{ github.event.pull_request.number }}.${{ github.run_number }}"
+            else
+              version="${base_version}-rc.pr${{ github.event.pull_request.number }}.${{ github.run_number }}"
+            fi
+          else
+            version="${base_version}"
+          fi
+          echo "value=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore ./Yadm.slnx
+
+      - name: Build
+        run: dotnet build ./Yadm.slnx -c Release --no-restore -p:Version=${{ steps.version.outputs.value }} -p:PackageVersion=${{ steps.version.outputs.value }}
+
+      - name: Test
+        run: dotnet test --solution ./Yadm.slnx -c Release --no-build --no-restore
+
+      - name: Audit packages
+        run: dotnet list ./Yadm.slnx package --vulnerable --include-transitive
+
+      - name: Pack libraries
+        run: |
+          dotnet pack ./src/Yadm.Common/Yadm.Common.csproj -c Release --no-build --no-restore -p:Version=${{ steps.version.outputs.value }} -p:PackageVersion=${{ steps.version.outputs.value }} -o ./artifacts/packages
+          dotnet pack ./src/Yadm.SystemTextJson/Yadm.SystemTextJson.csproj -c Release --no-build --no-restore -p:Version=${{ steps.version.outputs.value }} -p:PackageVersion=${{ steps.version.outputs.value }} -o ./artifacts/packages
+
+      - name: Smoke-test NuGet packages
+        shell: bash
+        run: |
+          for framework in net10.0 net11.0; do
+            project="$RUNNER_TEMP/yadm-smoke/$framework"
+            dotnet new console --framework "$framework" --output "$project"
+            dotnet add "$project" package Yadm.SystemTextJson \
+              --version "${{ steps.version.outputs.value }}" \
+              --source "$GITHUB_WORKSPACE/artifacts/packages"
+            dotnet build "$project" --no-restore
+          done
+
+      - name: Upload release-candidate packages
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: yadm-${{ steps.version.outputs.value }}
+          path: ./artifacts/packages/*
+          if-no-files-found: error
+          retention-days: 14

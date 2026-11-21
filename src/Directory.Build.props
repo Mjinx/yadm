@@ -2,6 +2,9 @@
   <Import Project="$(MSBuildThisFileDirectory)..\Directory.Build.props" />
 
   <PropertyGroup>
+    <TargetFramework />
+    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>
+
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
 
     <DebugType>portable</DebugType>
@@ -14,7 +17,7 @@
        project. Version can be supplied by the release pipeline. -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>mapping;mapper;validation</PackageTags>
     <IncludeSymbols>true</IncludeSymbols>
@@ -24,22 +27,18 @@
     <EnablePackageValidation>true</EnablePackageValidation>
   </PropertyGroup>
 
-  <!-- Fill in verified release metadata before publishing; do not ship placeholders.
-       LicenseExpression must be an SPDX identifier for the license actually chosen.
-       SDK Source Link support uses the Git remote once the repository is configured.
-       After the first stable release, set PackageValidationBaselineVersion to that
-       published version to detect unintended API breaks.
+  <!-- Keep release metadata synchronized with the repository.
+       SDK Source Link support uses the Git remote. The release workflow supplies
+       the previous stable version as PackageValidationBaselineVersion.
   -->
   <PropertyGroup>
+    <!-- Bootstrap value used before the first vMAJOR.MINOR.PATCH tag exists. Releases override it. -->
     <Version>0.1.0</Version>
     <Authors>Mjinx</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/Mjinx/yadm.git</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/Mjinx/yadm.git</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/Mjinx/yadm</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Mjinx/yadm</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-<!--
-    <PackageValidationBaselineVersion>FIRST-STABLE-VERSION</PackageValidationBaselineVersion>
--->
   </PropertyGroup>
 
   <ItemGroup>

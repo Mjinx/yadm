@@ -9,7 +9,8 @@ namespace Yadm.Common;
 /// <remarks>
 /// Names are matched case-insensitively and surrounding whitespace is ignored. Numbers are accepted only when they
 /// are defined members; flag combinations must be declared members too. Invalid text is reported with the list of
-/// accepted names. (Enums are not <see cref="IParsable{TSelf}"/>, so these overloads live in their own class.)
+/// accepted names without repeating the submitted value. (Enums are not <see cref="IParsable{TSelf}"/>, so these
+/// overloads live in their own class.)
 /// </remarks>
 public static class MappingContextEnumExtensions
 {
@@ -32,6 +33,12 @@ public static class MappingContextEnumExtensions
         [CallerArgumentExpression(nameof(text))] string expression = "") where TEnum : struct, Enum
     {
         ArgumentNullException.ThrowIfNull(context);
+        if (context.IsStopped)
+        {
+            result = default;
+            return false;
+        }
+
         if (MappingRules.IsAbsent(text))
         {
             context.Reject(text, MappingErrorCodes.Required, MappingRules.RequiredMessage, name, expression);
@@ -43,7 +50,7 @@ public static class MappingContextEnumExtensions
             return true;
 
         context.Reject(text, MappingErrorCodes.Invalid,
-            $"{MappingRules.InvalidMessage<TEnum>(text)} Expected one of: {string.Join(", ", Enum.GetNames<TEnum>())}.",
+            $"{MappingRules.InvalidMessage<TEnum>()} Expected one of: {string.Join(", ", Enum.GetNames<TEnum>())}.",
             name, expression);
         return false;
     }
@@ -57,6 +64,9 @@ public static class MappingContextEnumExtensions
         [CallerArgumentExpression(nameof(text))] string expression = "") where TEnum : struct, Enum
     {
         ArgumentNullException.ThrowIfNull(context);
+        if (context.IsStopped)
+            return null;
+
         if (MappingRules.IsAbsent(text))
             return null;
         return context.TryParse<TEnum>(text, out var value, name, expression) ? value : null;

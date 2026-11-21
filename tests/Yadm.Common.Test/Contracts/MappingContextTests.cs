@@ -78,6 +78,8 @@ public class MappingContextTests
         result.Errors.Select(error => error.Code).ShouldBe(["A", "B", MappingErrorCodes.TooManyErrors]);
         result.Errors[^1].ShouldBe(new MappingError("", MappingErrorCodes.TooManyErrors,
             "Only the first 2 errors are listed; 2 more were found."));
+        result.ErrorCount.ShouldBe(4);
+        result.HasPartialValue.ShouldBeFalse();
         result.ToString().ShouldBe("Failure: 4 error(s)");
         Should.Throw<MappingException>(() => result.Value).Message.ShouldStartWith("Mapping failed with 4 error(s):");
     }
@@ -111,6 +113,20 @@ public class MappingContextTests
     }
 
     [Fact]
+    public void FailFastMetadataReportsTheActualSingleErrorWithoutAPartial()
+    {
+        var result = TestMapping.Run(context =>
+        {
+            context.Parse<int>("bad");
+            context.Parse<int>("also bad");
+        }, MappingOptions.FailFast);
+
+        result.ErrorCount.ShouldBe(1);
+        result.Errors.ShouldHaveSingleItem();
+        result.HasPartialValue.ShouldBeFalse();
+    }
+
+    [Fact]
     public void SkippingAnItemKeepsItsErrorsButClearsThemFromItsParents()
     {
         var result = TestMapping.Run(context =>
@@ -132,6 +148,39 @@ public class MappingContextTests
 
         result.Errors.Select(error => error.Path).ShouldBe(["Order.Lines.Rows[1].Sku", "Order.Lines.Rows[1]"]);
         result.PartialValue.ShouldBeTrue();
+        result.HasPartialValue.ShouldBeTrue();
+        result.ErrorCount.ShouldBe(2);
+        Should.Throw<NotSupportedException>(() => ((ICollection<MappingError>)result.Errors).Clear());
+    }
+
+    [Fact]
+    public void AFailedResultCanRetainAZeroOrNullPartialValue()
+    {
+        var zero = Mapper.Create((int _, MappingContext context) =>
+        {
+            var skipped = context.For("Rows", 0);
+            skipped.AddError("Code", "Skipped.");
+            context.Skip(skipped);
+            return 0;
+        }).Map(0);
+        var absent = Mapper.Create((int _, MappingContext context) =>
+        {
+            var skipped = context.For("Rows", 0);
+            skipped.AddError("Code", "Skipped.");
+            context.Skip(skipped);
+            return (int?)null;
+        }).Map(0);
+
+        zero.IsSuccess.ShouldBeFalse();
+        zero.HasPartialValue.ShouldBeTrue();
+        zero.PartialValue.ShouldBe(0);
+        zero.ErrorCount.ShouldBe(1);
+        Should.Throw<MappingException>(() => zero.Value);
+
+        absent.HasPartialValue.ShouldBeTrue();
+        absent.PartialValue.ShouldBeNull();
+        absent.ErrorCount.ShouldBe(1);
+        Should.Throw<MappingException>(() => absent.Value);
     }
 
     [Fact]

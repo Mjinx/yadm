@@ -125,9 +125,9 @@ public class OrderMapperTests
 
         var errors = result.ToDictionary();
         errors.Keys.ShouldBe(["CustomerId", "Lines[0].Sku", "Lines[0].Quantity"]);
-        errors["CustomerId"].ShouldBe(["'bad' is not a valid Guid."]);
+        errors["CustomerId"].ShouldBe(["The value is not a valid Guid."]);
         errors["Lines[0].Sku"].ShouldBe(["A value is required."]);
-        errors["Lines[0].Quantity"].ShouldBe(["'x' is not a valid Int32."]);
+        errors["Lines[0].Quantity"].ShouldBe(["The value is not a valid Int32."]);
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public class OrderMapperTests
         var exception = Should.Throw<MappingException>(() => result.Value);
         exception.Errors.ShouldBe(result.Errors);
         exception.Message.ShouldContain("CustomerId: A value is required.");
-        exception.Message.ShouldContain("PlacedAt: 'bad' is not a valid DateTimeOffset.");
+        exception.Message.ShouldContain("PlacedAt: The value is not a valid DateTimeOffset.");
     }
 
     [Fact]
@@ -220,7 +220,8 @@ public class OrderMapperTests
         var error = result.Errors.ShouldHaveSingleItem();
         error.Path.ShouldBe("OrderType");
         error.AttemptedValue.ShouldBe("999");
-        error.Message.ShouldBe("'999' is not a valid OrderType. Expected one of: Standard, Express, Collection.");
+        error.Message.ShouldBe(
+            "The value is not a valid OrderType. Expected one of: Standard, Express, Collection.");
     }
 
     [Fact]
@@ -243,7 +244,7 @@ public class OrderMapperTests
         var error = result.Errors.ShouldHaveSingleItem();
         error.Path.ShouldBe("CustomerId");
         error.Code.ShouldBe(MappingErrorCodes.NotFound);
-        error.Message.ShouldBe($"Customer '{Customer.Id}' was not found.");
+        error.Message.ShouldBe("Customer was not found.");
     }
 
     [Fact]
@@ -258,8 +259,8 @@ public class OrderMapperTests
 
         result.Errors.Select(error => (error.Path, error.Message)).ShouldBe(
         [
-            ("Lines[1].Sku", "Product 'missing-1' was not found."),
-            ("Lines[2].Sku", "Product 'missing-2' was not found.")
+            ("Lines[1].Sku", "Product was not found."),
+            ("Lines[2].Sku", "Product was not found.")
         ]);
         await _products.ReceivedWithAnyArgs(1)
             .FindBySkusAsync(Arg.Any<IReadOnlyCollection<string>>(), CancellationToken.None);

@@ -21,6 +21,7 @@
     <Project Path="tests\Yadm.SystemTextJson.Test\Yadm.SystemTextJson.Test.csproj" />
   </Folder>
   <Folder Name="/benchmarks/">
+    <File Path="benchmarks\Directory.Build.props" />
     <Project Path="benchmarks\Yadm.OrderImport.Benchmarks\Yadm.OrderImport.Benchmarks.csproj" />
     <Project Path="benchmarks\Yadm.Benchmark.Scenarios\Yadm.Benchmark.Scenarios.csproj" />
   </Folder>

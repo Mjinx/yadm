@@ -9,15 +9,16 @@ namespace Yadm.Common;
 /// <typeparam name="T">The type of the mapped value.</typeparam>
 public sealed class MappingResult<T>
 {
-    private readonly int _errorsFound;
-
-    private MappingResult(T? value, IReadOnlyList<MappingError> errors, int errorsFound) =>
-        (PartialValue, Errors, _errorsFound) = (value, errors, errorsFound);
+    private MappingResult(T? value, IReadOnlyList<MappingError> errors, int errorsFound, bool hasPartialValue) =>
+        (PartialValue, Errors, ErrorCount, HasPartialValue) = (value, errors, errorsFound, hasPartialValue);
 
     /// <summary>True when the mapping found no errors, so <see cref="Value"/> can be read.</summary>
-    public bool IsSuccess => Errors.Count == 0;
+    public bool IsSuccess => ErrorCount == 0;
 
-    /// <summary>Every problem the mapping found, in the order found. Empty on success.</summary>
+    /// <summary>The errors reported by the mapping, excluding a possible overflow summary. Zero on success.</summary>
+    public int ErrorCount { get; }
+
+    /// <summary>Every problem the mapping found, in the order found. Empty on success. The snapshot is read-only.</summary>
     public IReadOnlyList<MappingError> Errors { get; }
 
     /// <summary>The mapped value.</summary>
@@ -25,7 +26,7 @@ public sealed class MappingResult<T>
     [SuppressMessage("Design", "CA1065:Do not raise exceptions in unexpected locations",
         Justification =
             "Reading the value of a failed mapping is documented to throw, and the exception lists the errors.")]
-    public T Value => IsSuccess ? PartialValue! : throw new MappingException(Errors, _errorsFound);
+    public T Value => IsSuccess ? PartialValue! : throw new MappingException(Errors, ErrorCount);
 
     /// <summary>
     /// The mapped value, even when the mapping failed: on success it equals <see cref="Value"/>; on failure it is the
@@ -34,6 +35,12 @@ public sealed class MappingResult<T>
     /// </summary>
     public T? PartialValue { get; }
 
+    /// <summary>
+    /// True when a failed mapping accepted and retained <see cref="PartialValue"/>. False on success and on failures
+    /// that discarded their value. A partial value can be a default value or null.
+    /// </summary>
+    public bool HasPartialValue { get; }
+
     /// <summary>Creates a successful result, for example to stub a service in a test.</summary>
     /// <exception cref="ArgumentNullException"><paramref name="value"/> is a null reference.</exception>
     public static MappingResult<T> Success(T value)
@@ -41,7 +48,7 @@ public sealed class MappingResult<T>
         if (value is null && !typeof(T).IsValueType)
             throw new ArgumentNullException(nameof(value), "A successful mapping needs a value.");
 
-        return new MappingResult<T>(value, [], 0);
+        return new MappingResult<T>(value, Array.AsReadOnly(Array.Empty<MappingError>()), 0, false);
     }
 
     /// <summary>Creates a failed result, for example to stub a service in a test.</summary>
@@ -53,11 +60,12 @@ public sealed class MappingResult<T>
         return list.Length == 0 || Array.IndexOf(list, null) >= 0
             ? throw new ArgumentException("A failed mapping needs at least one error, and no null errors.",
                 nameof(errors))
-            : new MappingResult<T>(default, list, list.Length);
+            : new MappingResult<T>(default, Array.AsReadOnly(list), list.Length, false);
     }
 
-    internal static MappingResult<T> Failure(T? partialValue, IReadOnlyList<MappingError> errors, int errorsFound) =>
-        new(partialValue, errors, errorsFound);
+    internal static MappingResult<T> Failure(T? partialValue, List<MappingError> errors, int errorsFound,
+        bool hasPartialValue) =>
+        new(partialValue, errors.AsReadOnly(), errorsFound, hasPartialValue);
 
     /// <summary>
     /// Groups the error messages by path, the shape ASP.NET Core's <c>Results.ValidationProblem</c>
@@ -73,5 +81,5 @@ public sealed class MappingResult<T>
     /// <summary>Describes the outcome, such as <c>Success: Order</c> or <c>Failure: 2 error(s)</c>.</summary>
     public override string ToString() => IsSuccess
         ? $"Success: {PartialValue}"
-        : $"Failure: {_errorsFound} error(s)";
+        : $"Failure: {ErrorCount} error(s)";
 }

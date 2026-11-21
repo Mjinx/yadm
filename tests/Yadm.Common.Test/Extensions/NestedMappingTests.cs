@@ -12,7 +12,8 @@ public class NestedMappingTests
 
         var errors = TestMapping.Errors(context => context.Map(src.Pet, new PetMapper()).ShouldBeNull());
 
-        errors.ShouldHaveSingleItem().ShouldBe(new MappingError("Pet.Age", Invalid, "'old' is not a valid Int32.", "old"));
+        errors.ShouldHaveSingleItem().ShouldBe(
+            new MappingError("Pet.Age", Invalid, "The value is not a valid Int32.", "old"));
     }
 
     [Fact]
@@ -370,7 +371,7 @@ public class NestedMappingTests
         var result = await Mapper.Create(async (object? _, MappingContext context, CancellationToken token) =>
         {
             var pet = await context.MapAsync(src.Pet, mapper, token);
-            pets = await context.MapEachAsync(src.Pets, mapper, token);
+            pets = await context.MapEachAsync(src.Pets, mapper, cancellationToken: token);
             return pet;
         }).MapAsync(null, cancellation.Token);
 
@@ -425,12 +426,38 @@ public class NestedMappingTests
         var exception = await Should.ThrowAsync<InvalidOperationException>(async () =>
             await Mapper.Create(async (object? _, MappingContext context, CancellationToken token) =>
             {
-                await context.MapEachAsync(source, mapper, token);
+                await context.MapEachAsync(source, mapper, cancellationToken: token);
                 return true;
             }).MapAsync(null));
 
         exception.ShouldBeSameAs(fault);
         source.Enumerations.ShouldBe(1);
+        source.ItemsRead.ShouldBe(1);
+        source.Disposed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task CancellationStopsAsyncEnumerationBeforeTheNextItemAndDisposesTheSource()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var source = new SingleUsePets();
+        var calls = 0;
+        var mapper = Mapper.Create(async (PetInput input, MappingContext _, CancellationToken _) =>
+        {
+            calls++;
+            await cancellation.CancelAsync();
+            return new Pet(input.Name!, 1);
+        });
+
+        var exception = await Should.ThrowAsync<OperationCanceledException>(() =>
+            Mapper.Create(async (object? _, MappingContext context, CancellationToken token) =>
+            {
+                await context.MapEachAsync(source, mapper, cancellationToken: token);
+                return true;
+            }).MapAsync(null, cancellation.Token).AsTask());
+
+        exception.CancellationToken.ShouldBe(cancellation.Token);
+        calls.ShouldBe(1);
         source.ItemsRead.ShouldBe(1);
         source.Disposed.ShouldBeTrue();
     }
@@ -446,13 +473,27 @@ public class NestedMappingTests
         {
             await context.MapAsync(src.Pet, mapper, "Cat", token);
             await context.MapOptionalAsync(src.Pet, mapper, "Kitten", token);
-            await context.MapEachAsync(src.Pets, mapper, "Cats", token);
+            await context.MapEachAsync(src.Pets, mapper, name: "Cats", cancellationToken: token);
             await context.MapEachAsync(src.Pets, mapper, skipInvalid: true, name: "Strays", cancellationToken: token);
             return true;
         }).MapAsync(null, cancellation.Token);
 
         result.Errors.Select(error => error.Path).ShouldBe(["Cat.Age", "Kitten.Age", "Cats[0].Age", "Strays[0].Age"]);
         mapper.Tokens.ShouldAllBe(token => token == cancellation.Token);
+    }
+
+    [Fact]
+    public async Task AsyncCollectionDefaultUsesTheSingleCanonicalOptionsOverload()
+    {
+        var src = new[] { new PetInput("Rex", "3") };
+
+        var result = await Mapper.Create(async (object? _, MappingContext context, CancellationToken _) =>
+        {
+            var pets = await context.MapEachAsync(src, new AsyncPetMapper(), default);
+            return pets.Single();
+        }).MapAsync(null);
+
+        result.Value.ShouldBe(new Pet("Rex", 3));
     }
 
     private sealed record PetInput(string? Name, string? Age);

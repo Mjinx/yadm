@@ -8,7 +8,10 @@ namespace Yadm.Common;
 /// <typeparam name="TSource">The type to map from, such as a request DTO.</typeparam>
 /// <typeparam name="TTarget">The type to map to, such as a domain model.</typeparam>
 /// <remarks>
-/// <para>Mappers should be stateless so one instance can be shared, for example as a singleton.</para>
+/// <para>
+/// Mappers should be stateless. A shared lifetime is safe only when their dependencies are also safe to share;
+/// otherwise register the mapper with a lifetime compatible with those dependencies.
+/// </para>
 /// <para>To use a mapper inside another one, call <c>context.Map(src.Child, mapper)</c>: it locates the child's
 /// errors under <c>Child</c> and reports a missing child. Calling this method directly maps in the caller's
 /// context, with neither.</para>

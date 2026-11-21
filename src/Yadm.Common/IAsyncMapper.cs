@@ -11,6 +11,8 @@ namespace Yadm.Common;
 /// Check the input first and return early when <see cref="MappingContext.HasErrors"/> is true, so invalid
 /// input causes no lookups. Then resolve lookups in batches and build the target. To use it inside another
 /// mapper, call <c>await context.MapAsync(src.Child, mapper, cancellationToken)</c>.
+/// Mappers should be stateless; register one with a lifetime compatible with its dependencies' lifetimes and
+/// thread-safety requirements.
 /// </remarks>
 public interface IAsyncMapper<in TSource, TTarget>
 {

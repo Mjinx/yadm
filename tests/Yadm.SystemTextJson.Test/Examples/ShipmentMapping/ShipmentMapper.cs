@@ -19,7 +19,7 @@ public sealed class ShipmentMapper : IMapper<ShipmentInput, Shipment>
 public sealed record ShipmentInput(
     string? Reference, ShipmentRecipientInput? Recipient, IReadOnlyList<ParcelInput>? Parcels);
 
-public sealed record ShipmentRecipientInput(string? Name, ShipmentAddressInput? Address) : IMappable<ShipmentRecipient>
+public sealed record ShipmentRecipientInput(string? Name, ShipmentAddressInput? Address) : IMappableObject<ShipmentRecipient>
 {
     public ShipmentRecipient? Map(MappingContext context)
     {
@@ -29,7 +29,7 @@ public sealed record ShipmentRecipientInput(string? Name, ShipmentAddressInput? 
     }
 }
 
-public sealed record ShipmentAddressInput(string? Street, string? Postcode) : IMappable<ShipmentAddress>
+public sealed record ShipmentAddressInput(string? Street, string? Postcode) : IMappableObject<ShipmentAddress>
 {
     public ShipmentAddress? Map(MappingContext context)
     {
@@ -39,7 +39,7 @@ public sealed record ShipmentAddressInput(string? Street, string? Postcode) : IM
     }
 }
 
-public sealed record ParcelInput(string? Label, string? WeightKg) : IMappable<Parcel>
+public sealed record ParcelInput(string? Label, string? WeightKg) : IMappableObject<Parcel>
 {
     public Parcel? Map(MappingContext context)
     {

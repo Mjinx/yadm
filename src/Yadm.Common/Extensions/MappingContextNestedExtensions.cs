@@ -5,7 +5,7 @@ namespace Yadm.Common;
 
 /// <summary>
 /// Maps nested objects and collections with another mapper, a function, or the source's own
-/// <see cref="IMappable{TTarget}"/> implementation.
+/// <see cref="IMappableObject{TTarget}"/> or <see cref="IAsyncMappableObject{TTarget}"/> implementation.
 /// </summary>
 /// <remarks>
 /// <para>Each nested value gets a child <see cref="MappingContext"/>, so its errors carry the full path, such as
@@ -50,7 +50,7 @@ public static class MappingContextNestedExtensions
     /// <param name="source">The nested value. Null reports <see cref="MappingErrorCodes.Required"/>.</param>
     /// <param name="name">The member name to report, instead of the one taken from the argument.</param>
     /// <param name="expression">Filled in by the compiler; leave it out, or forward it from your own helper.</param>
-    public static TTarget Map<TTarget>(this MappingContext context, IMappable<TTarget>? source, string? name = null,
+    public static TTarget Map<TTarget>(this MappingContext context, IMappableObject<TTarget>? source, string? name = null,
         [CallerArgumentExpression(nameof(source))] string expression = "") =>
         MapRequired(context, source, source, static (_, s, c) => s.Map(c), source, name, expression);
 
@@ -87,7 +87,7 @@ public static class MappingContextNestedExtensions
     /// <param name="source">The nested value, if any.</param>
     /// <param name="name">The member name to report, instead of the one taken from the argument.</param>
     /// <param name="expression">Filled in by the compiler; leave it out, or forward it from your own helper.</param>
-    public static TTarget? MapOptional<TTarget>(this MappingContext context, IMappable<TTarget>? source,
+    public static TTarget? MapOptional<TTarget>(this MappingContext context, IMappableObject<TTarget>? source,
         string? name = null, [CallerArgumentExpression(nameof(source))] string expression = "")
         where TTarget : class =>
         MapOptionalCore(context, source, source, static (_, s, c) => s.Map(c), source, name, expression);
@@ -162,7 +162,8 @@ public static class MappingContextNestedExtensions
     /// <param name="name">The member name to report, instead of the one taken from the argument.</param>
     /// <param name="expression">Filled in by the compiler; leave it out, or forward it from your own helper.</param>
     /// <returns>The items that mapped without errors, in source order.</returns>
-    public static List<TTarget> MapEach<TTarget>(this MappingContext context, IEnumerable<IMappable<TTarget>?>? source,
+    public static List<TTarget> MapEach<TTarget>(this MappingContext context,
+        IEnumerable<IMappableObject<TTarget>?>? source,
         bool skipInvalid = false, string? name = null,
         [CallerArgumentExpression(nameof(source))] string expression = "") =>
         MapEachCore(context, source, (object?)null, static (_, s, _, c) => s.Map(c), null, skipInvalid, name,
@@ -186,26 +187,37 @@ public static class MappingContextNestedExtensions
     /// <param name="name">The member name to report, or null to take it from the argument.</param>
     /// <param name="cancellationToken">Cancels the mapper's lookups.</param>
     /// <param name="expression">Filled in by the compiler; leave it out, or forward it from your own helper.</param>
-    public static async ValueTask<TTarget> MapAsync<TSource, TTarget>(this MappingContext context, TSource? source,
+    public static ValueTask<TTarget> MapAsync<TSource, TTarget>(this MappingContext context, TSource? source,
         IAsyncMapper<TSource, TTarget> mapper, string? name, CancellationToken cancellationToken = default,
         [CallerArgumentExpression(nameof(source))] string expression = "")
     {
-        ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(mapper);
-        if (MappingRules.IsAbsent(source))
-        {
-            context.Reject(source, MappingErrorCodes.Required, MappingRules.RequiredMessage, name, expression);
-            return default!;
-        }
-
-        if (context.IsStopped)
-            return default!;
-
-        var child = context.Child(MemberName.From(name, expression), -1);
-        var errorsBefore = context.ErrorsFound;
-        var value = await mapper.MapAsync(source, child, cancellationToken).ConfigureAwait(false);
-        return Accept(child, value, mapper, errorsBefore);
+        return MapRequiredAsync(context, source, mapper,
+            static (m, s, c, token) => m.MapAsync(s, c, token), mapper, name, expression, cancellationToken);
     }
+
+    /// <summary>Maps a required nested object with its own asynchronous mapping method.</summary>
+    /// <param name="context">The parent context.</param>
+    /// <param name="source">The nested value. Null reports <see cref="MappingErrorCodes.Required"/>.</param>
+    /// <param name="cancellationToken">Cancels the mapping's lookups.</param>
+    /// <param name="expression">Filled in by the compiler; leave it out, or forward it from your own helper.</param>
+    public static ValueTask<TTarget> MapAsync<TTarget>(this MappingContext context,
+        IAsyncMappableObject<TTarget>? source, CancellationToken cancellationToken = default,
+        [CallerArgumentExpression(nameof(source))] string expression = "") =>
+        context.MapAsync(source, name: null, cancellationToken, expression);
+
+    /// <summary>Maps a required nested object with its own asynchronous mapping method under
+    /// <paramref name="name"/>.</summary>
+    /// <param name="context">The parent context.</param>
+    /// <param name="source">The nested value. Null reports <see cref="MappingErrorCodes.Required"/>.</param>
+    /// <param name="name">The member name to report, or null to take it from the argument.</param>
+    /// <param name="cancellationToken">Cancels the mapping's lookups.</param>
+    /// <param name="expression">Filled in by the compiler; leave it out, or forward it from your own helper.</param>
+    public static ValueTask<TTarget> MapAsync<TTarget>(this MappingContext context,
+        IAsyncMappableObject<TTarget>? source, string? name, CancellationToken cancellationToken = default,
+        [CallerArgumentExpression(nameof(source))] string expression = "") =>
+        MapRequiredAsync(context, source, (object?)null,
+            static (_, s, c, token) => s.MapAsync(c, token), source, name, expression, cancellationToken);
 
     /// <summary>Maps an optional nested value with an asynchronous mapper; a missing value returns null.</summary>
     /// <param name="context">The parent context.</param>
@@ -228,52 +240,38 @@ public static class MappingContextNestedExtensions
     /// <param name="name">The member name to report, or null to take it from the argument.</param>
     /// <param name="cancellationToken">Cancels the mapper's lookups.</param>
     /// <param name="expression">Filled in by the compiler; leave it out, or forward it from your own helper.</param>
-    public static async ValueTask<TTarget?> MapOptionalAsync<TSource, TTarget>(this MappingContext context,
+    public static ValueTask<TTarget?> MapOptionalAsync<TSource, TTarget>(this MappingContext context,
         TSource? source, IAsyncMapper<TSource, TTarget> mapper, string? name,
         CancellationToken cancellationToken = default, [CallerArgumentExpression(nameof(source))] string expression = "")
         where TTarget : class
     {
-        ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(mapper);
-        if (MappingRules.IsAbsent(source) || context.IsStopped)
-            return null;
-
-        var child = context.Child(MemberName.From(name, expression), -1);
-        var errorsBefore = context.ErrorsFound;
-        var value = await mapper.MapAsync(source, child, cancellationToken).ConfigureAwait(false);
-        CheckReportedHere(child, mapper, errorsBefore);
-        return child.HasErrors ? null : value;
+        return MapOptionalAsyncCore(context, source, mapper,
+            static (m, s, c, token) => m.MapAsync(s, c, token), mapper, name, expression, cancellationToken);
     }
 
-    /// <summary>Maps every item of a required collection with an asynchronous mapper, one item at a time.</summary>
+    /// <summary>Maps an optional nested object with its own asynchronous mapping method.</summary>
     /// <param name="context">The parent context.</param>
-    /// <param name="source">The items. Null reports <see cref="MappingErrorCodes.Required"/>.</param>
-    /// <param name="mapper">The mapper for one item.</param>
-    /// <param name="cancellationToken">Cancels the mapper's lookups.</param>
+    /// <param name="source">The nested value, if any.</param>
+    /// <param name="cancellationToken">Cancels the mapping's lookups.</param>
     /// <param name="expression">Filled in by the compiler; leave it out, or forward it from your own helper.</param>
-    /// <returns>The items that mapped without errors, in source order.</returns>
-    public static ValueTask<List<TTarget>> MapEachAsync<TSource, TTarget>(this MappingContext context,
-        IEnumerable<TSource?>? source, IAsyncMapper<TSource, TTarget> mapper,
-        CancellationToken cancellationToken = default,
-        [CallerArgumentExpression(nameof(source))] string expression = "") =>
-        context.MapEachAsync(source, mapper, skipInvalid: false, name: null, cancellationToken, expression);
+    public static ValueTask<TTarget?> MapOptionalAsync<TTarget>(this MappingContext context,
+        IAsyncMappableObject<TTarget>? source, CancellationToken cancellationToken = default,
+        [CallerArgumentExpression(nameof(source))] string expression = "") where TTarget : class =>
+        context.MapOptionalAsync(source, name: null, cancellationToken, expression);
 
-    /// <summary>
-    /// Maps every item of a required collection with an asynchronous mapper, one item at a time, reporting under
-    /// <paramref name="name"/>.
-    /// </summary>
+    /// <summary>Maps an optional nested object with its own asynchronous mapping method under
+    /// <paramref name="name"/>.</summary>
     /// <param name="context">The parent context.</param>
-    /// <param name="source">The items. Null reports <see cref="MappingErrorCodes.Required"/>.</param>
-    /// <param name="mapper">The mapper for one item.</param>
+    /// <param name="source">The nested value, if any.</param>
     /// <param name="name">The member name to report, or null to take it from the argument.</param>
-    /// <param name="cancellationToken">Cancels the mapper's lookups.</param>
+    /// <param name="cancellationToken">Cancels the mapping's lookups.</param>
     /// <param name="expression">Filled in by the compiler; leave it out, or forward it from your own helper.</param>
-    /// <returns>The items that mapped without errors, in source order.</returns>
-    public static ValueTask<List<TTarget>> MapEachAsync<TSource, TTarget>(this MappingContext context,
-        IEnumerable<TSource?>? source, IAsyncMapper<TSource, TTarget> mapper, string? name,
-        CancellationToken cancellationToken = default,
-        [CallerArgumentExpression(nameof(source))] string expression = "") =>
-        context.MapEachAsync(source, mapper, skipInvalid: false, name, cancellationToken, expression);
+    public static ValueTask<TTarget?> MapOptionalAsync<TTarget>(this MappingContext context,
+        IAsyncMappableObject<TTarget>? source, string? name, CancellationToken cancellationToken = default,
+        [CallerArgumentExpression(nameof(source))] string expression = "") where TTarget : class =>
+        MapOptionalAsyncCore(context, source, (object?)null,
+            static (_, s, c, token) => s.MapAsync(c, token), source, name, expression, cancellationToken);
 
     /// <summary>Maps every item of a required collection with an asynchronous mapper, one item at a time.</summary>
     /// <param name="context">The parent context.</param>
@@ -286,21 +284,90 @@ public static class MappingContextNestedExtensions
     /// <param name="cancellationToken">Cancels the mapper's lookups.</param>
     /// <param name="expression">Filled in by the compiler; leave it out, or forward it from your own helper.</param>
     /// <returns>The items that mapped without errors, in source order.</returns>
-    public static async ValueTask<List<TTarget>> MapEachAsync<TSource, TTarget>(this MappingContext context,
-        IEnumerable<TSource?>? source, IAsyncMapper<TSource, TTarget> mapper, bool skipInvalid, string? name = null,
+    public static ValueTask<List<TTarget>> MapEachAsync<TSource, TTarget>(this MappingContext context,
+        IEnumerable<TSource?>? source, IAsyncMapper<TSource, TTarget> mapper, bool skipInvalid = false,
+        string? name = null,
         CancellationToken cancellationToken = default,
         [CallerArgumentExpression(nameof(source))] string expression = "")
     {
-        ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(mapper);
+        return MapEachAsyncCore(context, source, mapper,
+            static (m, s, c, token) => m.MapAsync(s, c, token), mapper, skipInvalid, name, expression, cancellationToken);
+    }
+
+    /// <summary>Maps every item in a required collection with each item's own asynchronous mapping method.</summary>
+    /// <param name="context">The parent context.</param>
+    /// <param name="source">The items. Null reports <see cref="MappingErrorCodes.Required"/>.</param>
+    /// <param name="skipInvalid">Leave failed items out without failing the parent.</param>
+    /// <param name="name">The member name to report, instead of the one taken from the argument.</param>
+    /// <param name="cancellationToken">Cancels the mapping's lookups.</param>
+    /// <param name="expression">Filled in by the compiler; leave it out, or forward it from your own helper.</param>
+    /// <returns>The items that mapped without errors, in source order.</returns>
+    public static ValueTask<List<TTarget>> MapEachAsync<TTarget>(this MappingContext context,
+        IEnumerable<IAsyncMappableObject<TTarget>?>? source, bool skipInvalid = false, string? name = null,
+        CancellationToken cancellationToken = default,
+        [CallerArgumentExpression(nameof(source))] string expression = "") =>
+        MapEachAsyncCore(context, source, (object?)null,
+            static (_, s, c, token) => s.MapAsync(c, token), null, skipInvalid, name, expression, cancellationToken);
+
+    private static async ValueTask<TTarget> MapRequiredAsync<TState, TSource, TTarget>(MappingContext context,
+        TSource? source, TState state,
+        Func<TState, TSource, MappingContext, CancellationToken, ValueTask<TTarget?>> map, object? producer,
+        string? name, string expression, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (MappingRules.IsAbsent(source))
+        {
+            context.Reject(source, MappingErrorCodes.Required, MappingRules.RequiredMessage, name, expression);
+            return default!;
+        }
+
+        if (context.IsStopped)
+            return default!;
+
+        var child = context.Child(MemberName.From(name, expression), -1);
+        var errorsBefore = context.ErrorsFound;
+        var value = await map(state, source, child, cancellationToken).ConfigureAwait(false);
+        return Accept(child, value, producer, errorsBefore);
+    }
+
+    private static async ValueTask<TTarget?> MapOptionalAsyncCore<TState, TSource, TTarget>(MappingContext context,
+        TSource? source, TState state,
+        Func<TState, TSource, MappingContext, CancellationToken, ValueTask<TTarget?>> map, object? producer,
+        string? name, string expression, CancellationToken cancellationToken) where TTarget : class
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (MappingRules.IsAbsent(source) || context.IsStopped)
+            return null;
+
+        var child = context.Child(MemberName.From(name, expression), -1);
+        var errorsBefore = context.ErrorsFound;
+        var value = await map(state, source, child, cancellationToken).ConfigureAwait(false);
+        CheckReportedHere(child, producer, errorsBefore);
+        return child.HasErrors ? null : value;
+    }
+
+    private static async ValueTask<List<TTarget>> MapEachAsyncCore<TState, TSource, TTarget>(MappingContext context,
+        IEnumerable<TSource?>? source, TState state,
+        Func<TState, TSource, MappingContext, CancellationToken, ValueTask<TTarget?>> map, object? producer,
+        bool skipInvalid, string? name, string expression, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
         var mapped = new List<TTarget>();
+        cancellationToken.ThrowIfCancellationRequested();
         if (!CanStart(context, source, name, expression))
             return mapped;
 
         var member = MemberName.ForCollection(name, expression);
         using var items = source.GetEnumerator();
-        for (var index = 0; items.MoveNext(); index++)
+        for (var index = 0; ; index++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!items.MoveNext())
+                break;
+
             var child = context.Child(member, index);
             var item = items.Current;
             if (MappingRules.IsAbsent(item))
@@ -310,8 +377,8 @@ public static class MappingContextNestedExtensions
             else
             {
                 var errorsBefore = context.ErrorsFound;
-                var value = await mapper.MapAsync(item, child, cancellationToken).ConfigureAwait(false);
-                var accepted = Accept(child, value, mapper, errorsBefore);
+                var value = await map(state, item, child, cancellationToken).ConfigureAwait(false);
+                var accepted = Accept(child, value, producer ?? item, errorsBefore);
                 if (!child.HasErrors)
                     mapped.Add(accepted);
             }

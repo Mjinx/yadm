@@ -69,6 +69,25 @@ public class MapperTests
     }
 
     [Fact]
+    public async Task PreCanceledAsyncMappingsDoNotInvokeTheMapper()
+    {
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+        var calls = 0;
+        var mapper = Mapper.Create((string source, MappingContext _, CancellationToken _) =>
+        {
+            calls++;
+            return ValueTask.FromResult<string?>(source);
+        });
+
+        var exception = await Should.ThrowAsync<OperationCanceledException>(() =>
+            mapper.MapAsync("x", MappingOptions.Default, cancellation.Token).AsTask());
+
+        exception.CancellationToken.ShouldBe(cancellation.Token);
+        calls.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task AMapperThatReturnsNullWithoutAnErrorIsABug()
     {
         var mapper = Mapper.Create((string _, MappingContext _) => (string?)null);
@@ -100,13 +119,19 @@ public class MapperTests
         (MappingOptions.Default with { MaxErrors = 10 }).MaxErrors.ShouldBe(10);
 
         Should.Throw<ArgumentOutOfRangeException>(() => new MappingOptions { MaxErrors = 0 });
+        Should.Throw<ArgumentNullException>(() => new MappingOptions { FormatProvider = null! })
+            .ParamName.ShouldBe("FormatProvider");
+        Should.Throw<ArgumentNullException>(() => MappingOptions.Default with { FormatProvider = null! })
+            .ParamName.ShouldBe("FormatProvider");
     }
 
     [Fact]
-    public void NullArgumentsAreRejected()
+    public async Task NullArgumentsAreRejected()
     {
         Should.Throw<ArgumentNullException>(() => ((IMapper<string, string>)null!).Map("x"));
-        Should.Throw<ArgumentNullException>(() => ((IMappable<Address>)null!).Map());
+        Should.Throw<ArgumentNullException>(() => ((IMappableObject<Address>)null!).Map());
+        await Should.ThrowAsync<ArgumentNullException>(() =>
+            ((IAsyncMappableObject<Address>)null!).MapAsync().AsTask());
         Should.Throw<ArgumentNullException>(() => Mapper.Create((Func<string, MappingContext, string?>)null!));
     }
 }

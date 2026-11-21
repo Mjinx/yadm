@@ -20,6 +20,9 @@ public static class MappingContextOptionalClassExtensions
         [CallerArgumentExpression(nameof(text))] string expression = "") where T : class, IParsable<T>
     {
         ArgumentNullException.ThrowIfNull(context);
+        if (context.IsStopped)
+            return null;
+
         if (MappingRules.IsAbsent(text))
             return null;
         return context.TryParse<T>(text, out var value, name, expression) ? value : null;

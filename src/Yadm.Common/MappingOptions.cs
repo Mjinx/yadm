@@ -12,8 +12,10 @@ public sealed record MappingOptions
     public static MappingOptions FailFast { get; } = new() { StopOnFirstError = true };
 
     /// <summary>
-    /// Stops the mapping at the first error: nothing else is checked, no further collection items are read, and
-    /// <see cref="MappingContext.HasErrors"/> becomes true everywhere. Defaults to false, which collects every error.
+    /// Stops the mapping at the first error: built-in scalar and nested helpers do no further work, no further
+    /// collection items are read, and <see cref="MappingContext.HasErrors"/> becomes true everywhere. Caller argument
+    /// evaluation, arbitrary mapper statements, loops and I/O still require explicit <see cref="MappingContext.IsStopped"/>
+    /// checks. Defaults to false, which collects every error.
     /// </summary>
     public bool StopOnFirstError { get; init; }
 
@@ -37,5 +39,14 @@ public sealed record MappingOptions
     /// The culture used to parse numbers and dates. Defaults to <see cref="CultureInfo.InvariantCulture"/>,
     /// so results do not depend on the server's settings.
     /// </summary>
-    public IFormatProvider FormatProvider { get; init; } = CultureInfo.InvariantCulture;
+    /// <exception cref="ArgumentNullException">The assigned provider is null.</exception>
+    public IFormatProvider FormatProvider
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(FormatProvider));
+            field = value;
+        }
+    } = CultureInfo.InvariantCulture;
 }

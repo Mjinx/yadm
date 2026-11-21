@@ -7,9 +7,12 @@ namespace Yadm.Common;
 /// Parses <typeparamref name="TInput"/> in a way <see cref="IParsable{TSelf}"/> does not cover, such as a custom
 /// date format. Same shape as the .NET <c>TryParse</c> methods, so those can be passed directly:
 /// <c>(string s, out DateOnly d) =&gt; DateOnly.TryParseExact(s, "dd/MM/yyyy", out d)</c>.
+/// Return <see langword="false"/> for invalid input. A true result must contain a usable required reference value.
 /// </summary>
 /// <returns>True when <paramref name="input"/> could be parsed; <paramref name="result"/> then holds the value.</returns>
-public delegate bool TryParser<in TInput, TOutput>(TInput input, out TOutput? result);
+public delegate bool TryParser<in TInput, TOutput>(
+    TInput input,
+    [MaybeNullWhen(false)] out TOutput? result);
 
 /// <summary>
 /// Reads single values: required values, parsed text and lookups.
@@ -65,6 +68,12 @@ public static class MappingContextValueExtensions
         ) where T : class
         {
             ArgumentNullException.ThrowIfNull(context);
+            if (context.IsStopped)
+            {
+                result = null;
+                return false;
+            }
+
             if (!MappingRules.IsAbsent(value))
             {
                 result = value;
@@ -91,6 +100,9 @@ public static class MappingContextValueExtensions
         {
             ArgumentNullException.ThrowIfNull(context);
             result = value.GetValueOrDefault();
+            if (context.IsStopped)
+                return false;
+
             if (value.HasValue)
                 return true;
 
@@ -136,6 +148,12 @@ public static class MappingContextValueExtensions
         ) where T : IParsable<T>
         {
             ArgumentNullException.ThrowIfNull(context);
+            if (context.IsStopped)
+            {
+                result = default;
+                return false;
+            }
+
             if (MappingRules.IsAbsent(text))
             {
                 context.Reject(text, MappingErrorCodes.Required, MappingRules.RequiredMessage, name, expression);
@@ -146,7 +164,7 @@ public static class MappingContextValueExtensions
             if (MappingRules.TryParse(text, context.Options.FormatProvider, out result))
                 return true;
 
-            context.Reject(text, MappingErrorCodes.Invalid, MappingRules.InvalidMessage<T>(text), name, expression);
+            context.Reject(text, MappingErrorCodes.Invalid, MappingRules.InvalidMessage<T>(), name, expression);
             return false;
         }
 
@@ -165,6 +183,9 @@ public static class MappingContextValueExtensions
         ) where T : struct, IParsable<T>
         {
             ArgumentNullException.ThrowIfNull(context);
+            if (context.IsStopped)
+                return null;
+
             if (MappingRules.IsAbsent(text))
                 return null;
             return context.TryParse<T>(text, out var value, name, expression) ? value : null;
@@ -177,6 +198,8 @@ public static class MappingContextValueExtensions
         /// <remarks>
         /// An absent input reports <see cref="MappingErrorCodes.Required"/> without calling the parser; a parser
         /// returning false reports <see cref="MappingErrorCodes.Invalid"/>. Exceptions thrown by the parser propagate.
+        /// Returning true with a null reference violates the parser contract and throws
+        /// <see cref="InvalidOperationException"/>; nullable value-type outputs remain valid.
         /// </remarks>
         /// <param name="input">The value to parse; it need not be a string.</param>
         /// <param name="parser">Parses a present input.</param>
@@ -208,6 +231,12 @@ public static class MappingContextValueExtensions
         {
             ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(parser);
+            if (context.IsStopped)
+            {
+                result = default;
+                return false;
+            }
+
             if (MappingRules.IsAbsent(input))
             {
                 context.Reject(input, MappingErrorCodes.Required, MappingRules.RequiredMessage, name, expression);
@@ -217,13 +246,12 @@ public static class MappingContextValueExtensions
 
             if (parser(input, out var parsed))
             {
-                result = parsed!;
+                result = MappingRules.ParserResult(parsed);
                 return true;
             }
 
             result = default;
-            context.Reject(input, MappingErrorCodes.Invalid, MappingRules.InvalidMessage<TOutput>(input), name,
-                expression);
+            context.Reject(input, MappingErrorCodes.Invalid, MappingRules.InvalidMessage<TOutput>(), name, expression);
             return false;
         }
 
@@ -261,6 +289,12 @@ public static class MappingContextValueExtensions
         {
             ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(values);
+            if (context.IsStopped)
+            {
+                result = default;
+                return false;
+            }
+
             if (MappingRules.IsAbsent(key))
             {
                 context.Reject(key, MappingErrorCodes.Required, MappingRules.RequiredMessage, name, expression);
@@ -271,8 +305,7 @@ public static class MappingContextValueExtensions
             if (values.TryGetValue(key, out result) && result is not null)
                 return true;
 
-            context.Reject(key, MappingErrorCodes.NotFound, $"{typeof(TValue).Name} '{key}' was not found.", name,
-                expression);
+            context.Reject(key, MappingErrorCodes.NotFound, $"{typeof(TValue).Name} was not found.", name, expression);
             return false;
         }
     }

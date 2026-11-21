@@ -1,0 +1,29 @@
+name: Prompt for release
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  prompt:
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add release prompt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" \
+            --body "Choose the next stable version in [Prepare release](${{ github.server_url }}/${{ github.repository }}/actions/workflows/release.yml): **major**, **minor**, **patch**, or **current** for the first release."
+
+      - name: Summarize
+        run: |
+          {
+            echo "### Release ready"
+            echo "Run the [Prepare release workflow](${{ github.server_url }}/${{ github.repository }}/actions/workflows/release.yml) and select the semantic version bump."
+          } >> "$GITHUB_STEP_SUMMARY"
