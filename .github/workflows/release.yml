@@ -15,9 +15,7 @@ on:
           - current
 
 permissions:
-  attestations: write
   contents: write
-  id-token: write
 
 concurrency:
   group: release
@@ -34,6 +32,15 @@ jobs:
         run: |
           echo "Releases may only run from main."
           exit 1
+
+      - name: Validate release configuration
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [[ -z "$NUGET_API_KEY" ]]; then
+            echo "Set the NUGET_API_KEY secret in the release environment."
+            exit 1
+          fi
 
       - uses: actions/checkout@v4
         with:
@@ -113,24 +120,16 @@ jobs:
             dotnet build "$project" --no-restore
           done
 
-      - name: Attest package provenance
-        if: github.event.repository.visibility == 'public'
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: ./artifacts/packages/*.nupkg
-
       - name: Publish NuGet packages
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          if [[ -z "$NUGET_API_KEY" ]]; then
-            echo "Set the NUGET_API_KEY secret in the release environment."
-            exit 1
-          fi
-          for package in ./artifacts/packages/*.nupkg ./artifacts/packages/*.snupkg; do
+          for package in ./artifacts/packages/*.nupkg; do
             dotnet nuget push "$package" \
               --api-key "$NUGET_API_KEY" \
               --source https://api.nuget.org/v3/index.json \
+              --symbol-source https://nuget.smbsrc.net/ \
+              --symbol-api-key "$NUGET_API_KEY" \
               --skip-duplicate
           done
 
@@ -145,7 +144,7 @@ jobs:
             ./artifacts/packages/*
 
       - name: Upload workflow packages
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: yadm-${{ steps.version.outputs.value }}

@@ -532,8 +532,8 @@ maintainer chooses `major`, `minor`, `patch`, or `current` for the first release
 release build, tests, dependency audit, pack, and `net10.0`/`net11.0` consumer smoke tests; pushes the packages
 to NuGet.org; then creates the GitHub release with generated notes and package assets. GitHub publication
 happens last, so a failed NuGet publish does not leave a public tag and release that must be recreated.
-Stable packages receive a GitHub build-provenance attestation when the repository is public. GitHub skips
-this optional step for this user-owned private repository because the attestation API is unavailable.
+If a release fails, its packages are retained as a workflow artifact for diagnosis; successful releases are
+kept on NuGet.org and GitHub Releases.
 
 GitHub release notes group merged pull requests by labels configured in `.github/release.yml`. The first
 release uses `current` and the bootstrap version. Later releases use the highest stable
