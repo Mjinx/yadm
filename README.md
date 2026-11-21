@@ -544,7 +544,8 @@ Before the first stable publication:
 1. Create the protected GitHub `release` environment and require maintainer approval if desired.
 2. On NuGet.org, add a trusted publishing policy for owner `Mjinx`, repository `yadm`, workflow
    `release.yml`, and environment `release`. This uses a short-lived OIDC credential instead of a
-   long-lived API key.
+   long-lived API key. Set the GitHub repository variable `NUGET_USER` to the NuGet.org username that
+   created that policy; it can differ from the GitHub username `Mjinx`.
 3. Protect `main` and require the build check.
 4. Add the changelog labels listed in `.github/release.yml`.
 

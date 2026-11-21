@@ -119,11 +119,20 @@ jobs:
         with:
           subject-path: ./artifacts/packages/*.nupkg
 
+      - name: Validate NuGet trusted publishing configuration
+        env:
+          NUGET_USER: ${{ vars.NUGET_USER }}
+        run: |
+          if [[ -z "$NUGET_USER" ]]; then
+            echo "Set the NUGET_USER repository variable to the NuGet.org username that created the trusted publishing policy."
+            exit 1
+          fi
+
       - name: NuGet trusted publishing login
         uses: NuGet/login@v1
         id: nuget-login
         with:
-          user: Mjinx
+          user: ${{ vars.NUGET_USER }}
 
       - name: Publish NuGet packages
         run: |
