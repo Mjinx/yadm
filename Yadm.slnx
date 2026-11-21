@@ -1,4 +1,10 @@
 <Solution>
+  <Folder Name="/.ci/">
+    <File Path=".github/release.yml" />
+    <File Path=".github/workflows/build.yml" />
+    <File Path=".github/workflows/release-prompt.yml" />
+    <File Path=".github/workflows/release.yml" />
+  </Folder>
   <Folder Name="/.misc/">
     <File Path=".editorconfig" />
     <File Path=".gitignore" />

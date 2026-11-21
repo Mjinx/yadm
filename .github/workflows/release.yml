@@ -58,7 +58,7 @@ jobs:
               baseline="$current"
             fi
           else
-            current="$(dotnet msbuild ./src/Yadm.Common/Yadm.Common.csproj -nologo -getProperty:Version | jq -r .Properties.Version)"
+            current="$(dotnet msbuild ./src/Yadm.Common/Yadm.Common.csproj -nologo -getProperty:Version)"
             baseline=""
           fi
 
