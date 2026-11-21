@@ -513,7 +513,7 @@ dotnet pack .\src\Yadm.SystemTextJson\Yadm.SystemTextJson.csproj -c Release -p:V
 ## Continuous integration and releases
 
 Pull requests build and test on both library target frameworks and upload a prerelease package artifact such
-as `0.1.1-rc.prN.RUN`. PR packages are deliberately not pushed to NuGet: untrusted fork code never receives
+as `0.1.1-rc.prN.RUN`. PR packages are deliberately not published: untrusted fork code never receives
 registry credentials.
 
 The release version has one source of truth:
@@ -527,13 +527,12 @@ The selected release version is not copied back into `src\Directory.Build.props`
 both `Version` and `PackageVersion` explicitly. This keeps Git tags, assembly metadata, and NuGet package
 metadata aligned without making a release depend on a version-bump commit.
 
-After a pull request is merged into `main`, the workflow comments with a link to **Prepare release**. A
-maintainer chooses `major`, `minor`, `patch`, or `current` for the first release. The workflow reruns the
-release build, tests, dependency audit, pack, and `net10.0`/`net11.0` consumer smoke tests; pushes the packages
-to NuGet.org; then creates the GitHub release with generated notes and package assets. GitHub publication
-happens last, so a failed NuGet publish does not leave a public tag and release that must be recreated.
-Stable packages receive a GitHub build-provenance attestation when the repository is public. GitHub skips
-this optional step for this user-owned private repository because the attestation API is unavailable.
+After a pull request is merged into `main`, a maintainer runs **Release** and chooses `major`, `minor`,
+`patch`, or `current` for the first release. The workflow builds, tests, and packs the libraries, publishes
+them to GitHub Packages, and then creates the GitHub release with generated notes and package assets.
+Publication uses the workflow's `GITHUB_TOKEN`, so no separate package-registry secret is required. GitHub
+publication happens last, so a failed package push does not leave a public tag and release that must be
+recreated.
 
 GitHub release notes group merged pull requests by labels configured in `.github/release.yml`. The first
 release uses `current` and the bootstrap version. Later releases use the highest stable
@@ -541,12 +540,8 @@ release uses `current` and the bootstrap version. Later releases use the highest
 
 Before the first stable publication:
 
-1. Create the protected GitHub `release` environment and require maintainer approval if desired.
-2. On NuGet.org, add a trusted publishing policy for owner `Mjinx`, repository `yadm`, workflow
-   `release.yml`, and environment `release`. This uses a short-lived OIDC credential instead of a
-   long-lived API key.
-3. Protect `main` and require the build check.
-4. Add the changelog labels listed in `.github/release.yml`.
+1. Protect `main` and require the build check.
+2. Add the changelog labels listed in `.github/release.yml`.
 
 `tests\Directory.Build.props` likewise imports the root defaults, and holds what every test project shares: the
 MTP executable settings and the xUnit.net v3, Shouldly, NSubstitute and coverlet references. A test project
