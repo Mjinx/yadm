@@ -37,6 +37,14 @@
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
+  <!-- MinVer defaults AssemblyVersion to major.0.0.0 (0.0.0.0 for 0.x), which breaks
+       package validation against baselines. Use major.minor.0.0 instead. -->
+  <Target Name="YadmAssemblyVersion" AfterTargets="MinVer">
+    <PropertyGroup>
+      <AssemblyVersion>$(MinVerMajor).$(MinVerMinor).0.0</AssemblyVersion>
+    </PropertyGroup>
+  </Target>
+
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
