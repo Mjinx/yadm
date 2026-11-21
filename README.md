@@ -542,9 +542,9 @@ release uses `current` and the bootstrap version. Later releases use the highest
 Before the first stable publication:
 
 1. Create the protected GitHub `release` environment and require maintainer approval if desired.
-2. On NuGet.org, add a trusted publishing policy for owner `Mjinx`, repository `yadm`, workflow
-   `release.yml`, and environment `release`. This uses a short-lived OIDC credential instead of a
-   long-lived API key.
+2. On NuGet.org, create an API key scoped only to `Yadm.Common` and `Yadm.SystemTextJson`, with push
+   permission for new packages and versions. Store it as the encrypted `NUGET_API_KEY` secret in the
+   protected GitHub `release` environment, not at repository or organization scope.
 3. Protect `main` and require the build check.
 4. Add the changelog labels listed in `.github/release.yml`.
 
