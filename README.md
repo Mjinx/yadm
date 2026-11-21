@@ -466,6 +466,7 @@ Install the .NET 11 SDK selected by `global.json` (`11.0.100` or a compatible la
 `net11.0`; tests and benchmarks run on `net11.0`.
 
 ```powershell
+dotnet format .\Yadm.slnx --verify-no-changes --no-restore
 dotnet build .\Yadm.slnx
 dotnet test --solution .\Yadm.slnx
 ```
@@ -512,37 +513,15 @@ dotnet pack .\src\Yadm.SystemTextJson\Yadm.SystemTextJson.csproj -c Release -p:V
 
 ## Continuous integration and releases
 
-Pull requests build and test on both library target frameworks and upload a prerelease package artifact such
-as `0.1.1-rc.prN.RUN`. PR packages are deliberately not published: untrusted fork code never receives
-registry credentials.
+`ci.yml` runs on pull requests and `main`. It routes by changed files: workflow changes are linted with
+actionlint; code changes get a format check, Release build (warnings as errors), tests on `net10.0` and
+`net11.0` with coverage (floor in `.github/coverage-baseline.json`) and a vulnerability audit; package-impacting
+changes also pack and validate (SourceLink, `.snupkg`, README, license, repository URL). Label a PR
+`ci:benchmark` to get a base-vs-head benchmark comment (advisory). Require the check **`CI / required`** in
+branch protection (a manual repository setting).
 
-The release version has one source of truth:
-
-- Before the first release, `0.1.0` in `src\Directory.Build.props` is the bootstrap version.
-- After a stable release, the highest `vMAJOR.MINOR.PATCH` Git tag is the source of truth.
-
-PR artifacts use the next patch version as a prerelease, for example `0.1.1-rc.pr42.7` after tag `v0.1.0`.
-Before any stable tag exists, they use the bootstrap version, for example `0.1.0-rc.pr42.7`.
-The selected release version is not copied back into `src\Directory.Build.props`; release workflows pass
-both `Version` and `PackageVersion` explicitly. This keeps Git tags, assembly metadata, and NuGet package
-metadata aligned without making a release depend on a version-bump commit.
-
-After a pull request is merged into `main`, a maintainer runs **Release** and chooses `major`, `minor`,
-`patch`, or `current` for the first release. The workflow builds, tests, and packs the libraries, publishes
-them to GitHub Packages, and then creates the GitHub release with generated notes and package assets.
-Publication uses the workflow's `GITHUB_TOKEN`, so no separate package-registry secret is required. GitHub
-publication happens last, so a failed package push does not leave a public tag and release that must be
-recreated.
-
-GitHub release notes group merged pull requests by labels configured in `.github/release.yml`. The first
-release uses `current` and the bootstrap version. Later releases use the highest stable
-`vMAJOR.MINOR.PATCH` tag as the base. Tags and package versions are created together by the workflow.
-
-Before the first stable publication:
-
-1. Protect `main` and require the build check.
-2. Add the changelog labels listed in `.github/release.yml`.
-
-`tests\Directory.Build.props` likewise imports the root defaults, and holds what every test project shares: the
-MTP executable settings and the xUnit.net v3, Shouldly, NSubstitute and coverlet references. A test project
-only adds its project references.
+Releases are tag-driven and versioned by MinVer: `git tag vX.Y.Z && git push --tags` on `main`. The release
+workflow rebuilds, tests, packs, pushes to the NuGet feed and creates the GitHub release with generated notes.
+It publishes to GitHub Packages by default. To publish publicly, set the repository variable `NUGET_SOURCE`
+to `https://api.nuget.org/v3/index.json` and the secret `NUGET_API_KEY`; nothing else changes.
+Dependabot updates NuGet packages and actions weekly.

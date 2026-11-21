@@ -244,7 +244,7 @@ public class AsyncSelfMappingTests
             var mapped = value == "bad"
                 ? ThrowInvalid(context, value)
                 : context.Required(value, nameof(AsyncSelfInput.Value));
-            return ValueTask.FromResult<Target?>(context.HasErrors
+            return ValueTask.FromResult(context.HasErrors
                 ? null
                 : new Target(mapped, context.Options, token));
         });
@@ -264,7 +264,7 @@ public class AsyncSelfMappingTests
             Map = map ?? ((context, token) =>
             {
                 var mapped = context.Required(Value, nameof(Value));
-                return ValueTask.FromResult<Target?>(context.HasErrors
+                return ValueTask.FromResult(context.HasErrors
                     ? null
                     : new Target(mapped, context.Options, token));
             });

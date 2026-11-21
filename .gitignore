@@ -5,6 +5,7 @@
 /packages/
 TestResults/
 BenchmarkDotNet.Artifacts/
+/plans/
 *.nupkg
 *.snupkg
 
@@ -17,4 +18,4 @@ BenchmarkDotNet.Artifacts/
 *.sln.docstates
 *.DotSettings.user
 *.iml
-_ReSharper.Caches/
+_ReSharper.Caches/cov/

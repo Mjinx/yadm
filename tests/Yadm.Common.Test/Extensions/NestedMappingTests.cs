@@ -156,7 +156,7 @@ public class NestedMappingTests
         var result = import.Map(rows, new MappingOptions { MaxErrors = 2 });
 
         result.Errors.Select(error => error.Path).ShouldBe(["[1].Age", "[3].Age", ""]);
-        result.Errors[^1].Code.ShouldBe(MappingErrorCodes.TooManyErrors);
+        result.Errors[^1].Code.ShouldBe(TooManyErrors);
         result.PartialValue.ShouldNotBeNull().Pets.Count.ShouldBe(5);
     }
 
@@ -197,7 +197,7 @@ public class NestedMappingTests
         var result = import.Map(new ShelterInput([new("Rex", "3"), new(null, "1"), new("Zed", "1"), new("Kit", "1")]));
 
         result.Errors.Select(error => (error.Path, error.Code)).ShouldBe(
-            [("Rows[1].Name", MappingErrorCodes.Required), ("Rows[2].Name", MappingErrorCodes.NotFound)]);
+            [("Rows[1].Name", Required), ("Rows[2].Name", NotFound)]);
         result.PartialValue.ShouldNotBeNull().Pets.ShouldBe([known["Rex"], known["Kit"]]);
     }
 
