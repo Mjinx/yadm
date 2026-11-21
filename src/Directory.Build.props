@@ -2,9 +2,6 @@
   <Import Project="$(MSBuildThisFileDirectory)..\Directory.Build.props" />
 
   <PropertyGroup>
-    <TargetFramework />
-    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>
-
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
 
     <DebugType>portable</DebugType>

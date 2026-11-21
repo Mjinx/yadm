@@ -1,5 +1,5 @@
 name: Setup .NET
-description: Install the SDKs needed to build (global.json) and test on net10.0, with NuGet caching.
+description: Install the SDK from global.json (net11.0) plus the 10.0.x runtime so every target framework builds and tests, with NuGet caching.
 runs:
   using: composite
   steps:
