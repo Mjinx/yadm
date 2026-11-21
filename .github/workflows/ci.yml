@@ -37,10 +37,12 @@ jobs:
           fi
           echo "$files"
           has() { grep -Eq "$1" <<<"$files" && echo true || echo false; }
-          echo "workflows=$(has '^\.github/')" >> "$GITHUB_OUTPUT"
-          # Anything that can affect build, tests or the package; docs and workflow-only changes skip it.
-          echo "code=$(has '^(src|tests|benchmarks)/|\.(slnx|props|targets)$|global\.json$|^\.config/|^\.editorconfig$|^\.github/(actions/|coverage-baseline)')" >> "$GITHUB_OUTPUT"
-          echo "pack=$(has '^src/|^Directory\.(Build|Packages)\.props$|^README\.md$|^global\.json$|^\.github/actions/validate-package')" >> "$GITHUB_OUTPUT"
+          {
+            echo "workflows=$(has '^\.github/')"
+            # Anything that can affect build, tests or the package; docs and workflow-only changes skip it.
+            echo "code=$(has '^(src|tests|benchmarks)/|\.(slnx|props|targets)$|global\.json$|^\.config/|^\.editorconfig$|^\.github/(actions/|coverage-baseline)')"
+            echo "pack=$(has '^src/|^Directory\.(Build|Packages)\.props$|^README\.md$|^global\.json$|^\.github/actions/validate-package')"
+          } >> "$GITHUB_OUTPUT"
 
   workflows:
     name: Lint workflows
