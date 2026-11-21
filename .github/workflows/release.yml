@@ -1,130 +1,70 @@
 name: Release
 
+# Tag push is the only release trigger. Private vs public differs only by
+# the NUGET_SOURCE variable and NUGET_API_KEY secret.
 on:
-  workflow_dispatch:
-    inputs:
-      bump:
-        description: Version increment
-        required: true
-        default: patch
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
-          - current
+  push:
+    tags: [ 'v[0-9]+.[0-9]+.[0-9]+*' ]
 
 permissions:
   contents: write
   packages: write
 
 concurrency:
-  group: release
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+      NUGET_SOURCE: ${{ vars.NUGET_SOURCE || format('https://nuget.pkg.github.com/{0}/index.json', github.repository_owner) }}
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY || github.token }}
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Require main
-        if: github.ref != 'refs/heads/main'
-        run: |
-          echo "Releases may only run from main."
-          exit 1
-
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-dotnet@v6
+      - name: Require tag on main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - uses: ./.github/actions/setup-dotnet
+
+      - run: dotnet restore Yadm.slnx
+      - run: dotnet format Yadm.slnx --verify-no-changes --no-restore
+      - run: dotnet build Yadm.slnx -c Release --no-restore
+      - run: dotnet test --solution Yadm.slnx -c Release --no-build
+
+      - name: Vulnerability audit
+        run: |
+          dotnet list Yadm.slnx package --vulnerable --include-transitive --format json > vuln.json
+          if jq -e '[.projects[].frameworks[]? | (.topLevelPackages // [])[], (.transitivePackages // [])[]] | length > 0' vuln.json >/dev/null; then
+            cat vuln.json; exit 1
+          fi
+
+      # API-compat baseline: latest stable tag of the same major version.
+      - name: Find baseline
+        id: baseline
+        run: |
+          cur="${GITHUB_REF_NAME#v}"
+          prev=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | grep -v -- '-' | grep -vx "v${cur}" | sort -V | tail -n1 || true)
+          if [ -z "$prev" ] || [ "$(echo "${prev#v}" | cut -d. -f1)" != "$(echo "$cur" | cut -d. -f1)" ]; then
+            echo "args=" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          dir="$RUNNER_TEMP/package-baselines"; mkdir -p "$dir"
+          gh release download "$prev" --pattern '*.nupkg' --dir "$dir"
+          echo "args=-p:PackageValidationBaselineVersion=${prev#v} -p:RestoreAdditionalProjectSources=$dir" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/validate-package
         with:
-          dotnet-version: |
-            10.0.x
-            11.0.x
+          args: ${{ steps.baseline.outputs.args }}
 
+      - name: Publish
+        run: dotnet nuget push "artifacts/packages/*.nupkg" --source "$NUGET_SOURCE" --api-key "$NUGET_API_KEY" --skip-duplicate
 
-      - name: Show dotnet version
+      - name: GitHub release
         run: |
-          dotnet --list-sdks
-          dotnet --list-runtimes
-
-      - name: Determine version
-        id: version
-        shell: bash
-        run: |
-          latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | head -n 1)"
-          if [[ -n "$latest" ]]; then
-            current="${latest#v}"
-          else
-            current="$(dotnet msbuild ./src/Yadm.Common/Yadm.Common.csproj -nologo -getProperty:Version)"
-          fi
-
-          IFS=. read -r major minor patch <<< "$current"
-          case "${{ inputs.bump }}" in
-            major)   version="$((major + 1)).0.0" ;;
-            minor)   version="${major}.$((minor + 1)).0" ;;
-            patch)   version="${major}.${minor}.$((patch + 1))" ;;
-            current) version="$current" ;;
-          esac
-
-          if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
-            echo "Tag v${version} already exists."
-            exit 1
-          fi
-
-          echo "value=${version}" >> "$GITHUB_OUTPUT"
-          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
-          if [[ "${{ inputs.bump }}" != "major" && -n "$latest" ]]; then
-            echo "baseline=${current}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Restore
-        run: dotnet restore ./Yadm.slnx
-
-      - name: Build
-        run: dotnet build ./Yadm.slnx -c Release --no-restore -p:ContinuousIntegrationBuild=true -p:Version=${{ steps.version.outputs.value }} -p:PackageVersion=${{ steps.version.outputs.value }}
-
-      - name: Test
-        run: dotnet test --solution ./Yadm.slnx -c Release --no-build --no-restore
-
-      - name: Pack
-        shell: bash
-        run: |
-          baseline=()
-          if [[ -n "${{ steps.version.outputs.baseline }}" ]]; then
-            baseline+=("-p:PackageValidationBaselineVersion=${{ steps.version.outputs.baseline }}")
-          fi
-
-          for project in \
-            ./src/Yadm.Common/Yadm.Common.csproj \
-            ./src/Yadm.SystemTextJson/Yadm.SystemTextJson.csproj; do
-            dotnet pack "$project" \
-              -c Release \
-              --no-build \
-              --no-restore \
-              -p:Version=${{ steps.version.outputs.value }} \
-              -p:PackageVersion=${{ steps.version.outputs.value }} \
-              -o ./artifacts/packages \
-              "${baseline[@]}"
-          done
-
-      - name: Publish packages
-        shell: bash
-        run: |
-          for package in ./artifacts/packages/*.nupkg; do
-            dotnet nuget push "$package" \
-              --api-key "$GITHUB_TOKEN" \
-              --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
-              --skip-duplicate
-          done
-
-      - name: Create GitHub release
-        run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            --generate-notes \
-            --title "Yadm ${{ steps.version.outputs.tag }}" \
-            --target "${{ github.sha }}" \
-            ./artifacts/packages/*
+          flags=""; case "$GITHUB_REF_NAME" in *-*) flags="--prerelease";; esac
+          gh release create "$GITHUB_REF_NAME" $flags --generate-notes --title "Yadm $GITHUB_REF_NAME" --verify-tag artifacts/packages/*

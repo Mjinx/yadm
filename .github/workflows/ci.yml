@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened, labeled ]
+  push:
+    branches: [ main ]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      workflows: ${{ steps.f.outputs.workflows }}
+      code: ${{ steps.f.outputs.code }}
+      pack: ${{ steps.f.outputs.pack }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: f
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          else
+            files=$(git diff --name-only "${{ github.event.before }}" HEAD 2>/dev/null || echo ".github/workflows/ci.yml
+          src/")
+          fi
+          echo "$files"
+          has() { grep -Eq "$1" <<<"$files" && echo true || echo false; }
+          echo "workflows=$(has '^\.github/')" >> "$GITHUB_OUTPUT"
+          # Anything that can affect build, tests or the package; docs and workflow-only changes skip it.
+          echo "code=$(has '^(src|tests|benchmarks)/|\.(slnx|props|targets)$|global\.json$|^\.config/|^\.editorconfig$|^\.github/(actions/|coverage-baseline)')" >> "$GITHUB_OUTPUT"
+          echo "pack=$(has '^src/|^Directory\.(Build|Packages)\.props$|^README\.md$|^global\.json$|^\.github/actions/validate-package')" >> "$GITHUB_OUTPUT"
+
+  workflows:
+    name: Lint workflows
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
+
+  code:
+    name: Build, test, audit
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # MinVer needs tags
+      - uses: ./.github/actions/setup-dotnet
+      - run: dotnet restore Yadm.slnx
+      - run: dotnet format Yadm.slnx --no-restore --verify-no-changes
+      - run: dotnet build Yadm.slnx -c Release --no-restore
+      - name: Test with coverage
+        run: >
+          dotnet test --solution Yadm.slnx -c Release --no-build --results-directory cov
+          -- --coverlet --coverlet-output-format cobertura --coverlet-file-prefix cov
+      - name: Coverage floor
+        shell: bash
+        run: |
+          dotnet tool restore
+          dotnet tool run reportgenerator -reports:"cov/*.xml" -targetdir:cov/report -reporttypes:"JsonSummary;MarkdownSummaryGithub"
+          cat cov/report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+          actual=$(jq '.summary.linecoverage' cov/report/Summary.json)
+          floor=$(jq '.lineCoverageFloor' .github/coverage-baseline.json)
+          echo "line coverage $actual% (floor $floor%)"
+          awk -v a="$actual" -v f="$floor" 'BEGIN { exit !(a >= f) }' || { echo "::error::coverage $actual% is below floor $floor%"; exit 1; }
+      - name: Vulnerability audit
+        shell: bash
+        run: |
+          dotnet list Yadm.slnx package --vulnerable --include-transitive --format json > audit.json
+          if jq -e '[.. | objects | select(has("severity"))] | length > 0' audit.json >/dev/null; then
+            dotnet list Yadm.slnx package --vulnerable --include-transitive
+            echo "::error::vulnerable dependencies found"
+            exit 1
+          fi
+      - if: needs.changes.outputs.pack == 'true'
+        uses: ./.github/actions/validate-package
+
+  benchmarks:
+    name: Benchmarks (advisory)
+    needs: changes
+    if: >
+      github.event_name == 'pull_request' &&
+      contains(github.event.pull_request.labels.*.name, 'ci:benchmark') &&
+      needs.changes.outputs.code == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-dotnet
+      - name: Run base and head
+        shell: bash
+        run: |
+          git worktree add ../base "origin/${{ github.base_ref }}"
+          run() { # dir, label
+            (cd "$1" && dotnet run -c Release --project benchmarks/Yadm.OrderImport.Benchmarks -- \
+              --filter '*' --job short --exporters github --artifacts "$GITHUB_WORKSPACE/bench/$2")
+          }
+          run ../base base || echo "base benchmark failed" > bench-base-failed
+          run . head
+      - name: Comment results
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const read = (d) => fs.existsSync(d)
+              ? fs.readdirSync(d, { recursive: true }).filter(f => f.endsWith('-report-github.md'))
+                  .map(f => fs.readFileSync(`${d}/${f}`, 'utf8')).join('\n')
+              : '_no results_';
+            const body = `### Benchmarks (advisory, short job, shared runner: noisy)\n<details><summary>Base</summary>\n\n${read('bench/base')}\n</details>\n\n**Head**\n\n${read('bench/head')}`;
+            await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+
+  required:
+    name: required
+    if: always()
+    needs: [ changes, workflows, code ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate
+        shell: bash
+        run: |
+          echo '${{ toJSON(needs) }}'
+          if echo '${{ toJSON(needs) }}' | grep -Eq '"result": "(failure|cancelled)"'; then exit 1; fi
