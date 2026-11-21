@@ -1,0 +1,153 @@
+name: Prepare release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version increment
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - current
+
+permissions:
+  attestations: write
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+
+    steps:
+      - name: Require main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Releases may only run from main."
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+            11.0.x
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | head -n 1)"
+          if [[ -n "$latest" ]]; then
+            current="${latest#v}"
+            if [[ "${{ inputs.bump }}" == "major" ]]; then
+              baseline=""
+            else
+              baseline="$current"
+            fi
+          else
+            current="$(dotnet msbuild ./src/Yadm.Common/Yadm.Common.csproj -nologo -getProperty:Version)"
+            baseline=""
+          fi
+
+          IFS=. read -r major minor patch <<< "$current"
+          case "${{ inputs.bump }}" in
+            major)   version="$((major + 1)).0.0" ;;
+            minor)   version="${major}.$((minor + 1)).0" ;;
+            patch)   version="${major}.${minor}.$((patch + 1))" ;;
+            current) version="$current" ;;
+          esac
+
+          if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
+            echo "Tag v${version} already exists."
+            exit 1
+          fi
+
+          echo "value=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          echo "baseline=${baseline}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore ./Yadm.slnx
+
+      - name: Build
+        run: dotnet build ./Yadm.slnx -c Release --no-restore -p:ContinuousIntegrationBuild=true -p:Version=${{ steps.version.outputs.value }} -p:PackageVersion=${{ steps.version.outputs.value }}
+
+      - name: Test
+        run: dotnet test --solution ./Yadm.slnx -c Release --no-build --no-restore
+
+      - name: Audit packages
+        run: dotnet list ./Yadm.slnx package --vulnerable --include-transitive
+
+      - name: Pack libraries
+        shell: bash
+        run: |
+          baseline=()
+          if [[ -n "${{ steps.version.outputs.baseline }}" ]]; then
+            baseline+=("-p:PackageValidationBaselineVersion=${{ steps.version.outputs.baseline }}")
+          fi
+          dotnet pack ./src/Yadm.Common/Yadm.Common.csproj -c Release --no-build --no-restore -p:Version=${{ steps.version.outputs.value }} -p:PackageVersion=${{ steps.version.outputs.value }} -o ./artifacts/packages "${baseline[@]}"
+          dotnet pack ./src/Yadm.SystemTextJson/Yadm.SystemTextJson.csproj -c Release --no-build --no-restore -p:Version=${{ steps.version.outputs.value }} -p:PackageVersion=${{ steps.version.outputs.value }} -o ./artifacts/packages "${baseline[@]}"
+
+      - name: Smoke-test NuGet packages
+        shell: bash
+        run: |
+          for framework in net10.0 net11.0; do
+            project="$RUNNER_TEMP/yadm-smoke/$framework"
+            dotnet new console --framework "$framework" --output "$project"
+            dotnet add "$project" package Yadm.SystemTextJson \
+              --version "${{ steps.version.outputs.value }}" \
+              --source "$GITHUB_WORKSPACE/artifacts/packages"
+            dotnet build "$project" --no-restore
+          done
+
+      - name: Attest package provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ./artifacts/packages/*.nupkg
+
+      - name: NuGet trusted publishing login
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: Mjinx
+
+      - name: Publish NuGet packages
+        run: |
+          for package in ./artifacts/packages/*.nupkg ./artifacts/packages/*.snupkg; do
+            dotnet nuget push "$package" \
+              --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate
+          done
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --generate-notes \
+            --title "Yadm ${{ steps.version.outputs.tag }}" \
+            --target "${{ github.sha }}" \
+            ./artifacts/packages/*
+
+      - name: Upload workflow packages
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yadm-${{ steps.version.outputs.value }}
+          path: ./artifacts/packages/*
+          if-no-files-found: warn
+          retention-days: 30
