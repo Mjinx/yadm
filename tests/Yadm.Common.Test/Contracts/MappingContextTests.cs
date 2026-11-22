@@ -154,6 +154,53 @@ public class MappingContextTests
     }
 
     [Fact]
+    public void NestedSkipsKeepSiblingErrorsAndDoNotLeakLateErrorsToAncestors()
+    {
+        var result = TestMapping.Run(context =>
+        {
+            var group = context.For("Group");
+            var skipped = group.For("Rows", 0);
+            var nested = skipped.For("Nested");
+            var sibling = group.For("Rows", 1);
+            nested.AddError("Nested", "First.");
+            sibling.AddError("Sibling", "Second.");
+
+            context.Skip(group);
+            nested.AddError("Late", "Third.");
+            skipped.Skip(nested);
+
+            nested.HasErrors.ShouldBeTrue();
+            skipped.HasErrors.ShouldBeFalse();
+            sibling.HasErrors.ShouldBeTrue();
+            group.HasErrors.ShouldBeTrue();
+            context.HasErrors.ShouldBeFalse();
+        }, new MappingOptions { MaxErrors = 1 });
+
+        result.HasPartialValue.ShouldBeTrue();
+        result.ErrorCount.ShouldBe(3);
+        result.Errors.Select(error => error.Path).ShouldBe(["Group.Rows[0].Nested", ""]);
+        result.Errors[1].Code.ShouldBe(MappingErrorCodes.TooManyErrors);
+    }
+
+    [Fact]
+    public void ProviderChangesAreSharedWithinOneRunButNotAcrossRuns()
+    {
+        var service = new object();
+        var replacement = new object();
+        TestMapping.Run(context =>
+        {
+            var child = context.For("Child");
+            context.InitializeServiceProvider(_ => service);
+            child.GetService(typeof(object)).ShouldBeSameAs(service);
+            child.InitializeServiceProvider(_ => replacement);
+            context.GetService(typeof(object)).ShouldBeSameAs(replacement);
+            context.For("Sibling").GetService(typeof(object)).ShouldBeSameAs(replacement);
+        }).IsSuccess.ShouldBeTrue();
+
+        TestMapping.Run(context => context.GetService(typeof(object)).ShouldBeNull()).IsSuccess.ShouldBeTrue();
+    }
+
+    [Fact]
     public void AFailedResultCanRetainAZeroOrNullPartialValue()
     {
         var zero = Mapper.Create((int _, MappingContext context) =>

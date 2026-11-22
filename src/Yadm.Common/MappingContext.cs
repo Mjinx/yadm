@@ -22,37 +22,26 @@ namespace Yadm.Common;
 /// </remarks>
 public sealed class MappingContext : IServiceProvider
 {
-    private readonly MappingContext _root;
-    private Func<Type, object?>? _serviceProvider;
+    private readonly MappingRun _run;
     private readonly MappingContext? _parent;
-    private readonly List<MappingError>? _errors;
-    private readonly string? _member;
-    private readonly int _index;
-    private int _errorCount;
-    private int _errorsFound;
+    private readonly MappingPathSegment _segment;
+    private int _activeErrorCount;
     private bool _skipped;
 
     internal MappingContext(MappingOptions? options, IServiceProvider? serviceProvider = null)
     {
-        Options = options ?? MappingOptions.Default;
-        _root = this;
-        _errors = [];
-        _index = -1;
-        if (serviceProvider is not null)
-            InitializeServiceProvider(serviceProvider.GetService);
+        _run = new MappingRun(options, serviceProvider);
     }
 
-    private MappingContext(MappingContext parent, string? member, int index)
+    private MappingContext(MappingContext parent, MappingPathSegment segment)
     {
-        Options = parent.Options;
-        _root = parent._root;
+        _run = parent._run;
         _parent = parent;
-        _member = member;
-        _index = index;
+        _segment = segment;
     }
 
     /// <summary>The options this mapping runs with.</summary>
-    public MappingOptions Options { get; }
+    public MappingOptions Options => _run.Options;
 
     /// <summary>Where this context is in the source, such as <c>Lines[2]</c>. Empty for the root.</summary>
     public string Path => field ??= BuildPath();
@@ -62,13 +51,13 @@ public sealed class MappingContext : IServiceProvider
     /// skipped), or when the mapping has stopped. Check it before using the values you read, before I/O, and
     /// before calling a constructor that validates its arguments.
     /// </summary>
-    public bool HasErrors => _errorCount > 0 || IsStopped;
+    public bool HasErrors => _activeErrorCount > 0 || IsStopped;
 
     /// <summary>
     /// True when <see cref="MappingOptions.StopOnFirstError"/> is set and an error was reported. Nothing else is
     /// recorded, and built-in helpers and collection mappings do no further work.
     /// </summary>
-    public bool IsStopped => Options.StopOnFirstError && _root._errorsFound > 0;
+    public bool IsStopped => _run.IsStopped;
 
     /// <summary>
     /// Initializes the mapping with a service provider that <see cref="GetService"/> uses. The provider is shared by this context and every
@@ -78,7 +67,7 @@ public sealed class MappingContext : IServiceProvider
     public void InitializeServiceProvider(Func<Type, object?> serviceProvider)
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
-        _root._serviceProvider = serviceProvider;
+        _run.ServiceProvider = serviceProvider;
     }
 
     /// <summary>
@@ -88,14 +77,14 @@ public sealed class MappingContext : IServiceProvider
     /// </summary>
     /// <param name="serviceType">The type of the service needed.</param>
     /// <returns>The service, or <see langword="null"/> when no provider was supplied or it has no such service.</returns>
-    public object? GetService(Type serviceType) => _root._serviceProvider?.Invoke(serviceType);
+    public object? GetService(Type serviceType) => _run.ServiceProvider?.Invoke(serviceType);
 
     /// <summary>Creates a child context, so errors reported to it are located under <paramref name="member"/>.</summary>
     /// <param name="member">The member name, such as <c>ShipTo</c>.</param>
     public MappingContext For(string member)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(member);
-        return new MappingContext(this, member, -1);
+        return Child(member);
     }
 
     /// <summary>Creates a child context for one collection item, located at <c>member[index]</c>.</summary>
@@ -105,7 +94,7 @@ public sealed class MappingContext : IServiceProvider
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(member);
         ArgumentOutOfRangeException.ThrowIfNegative(index);
-        return new MappingContext(this, member, index);
+        return Child(member, index);
     }
 
     /// <summary>
@@ -116,7 +105,7 @@ public sealed class MappingContext : IServiceProvider
     public MappingContext For(int index)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
-        return new MappingContext(this, null, index);
+        return Child(null, index);
     }
 
     /// <summary>
@@ -158,44 +147,23 @@ public sealed class MappingContext : IServiceProvider
         item._skipped = true;
         for (var context = this; context is not null; context = context._parent)
         {
-            context._errorCount -= item._errorCount;
+            context._activeErrorCount -= item._activeErrorCount;
             if (context._skipped)
                 break;
         }
     }
 
-    internal int ErrorsFound => _root._errorsFound;
+    internal int ErrorsFound => _run.ErrorsFound;
 
     /// <summary>Errors reported in this context and the contexts nested in it, including skipped items.</summary>
     internal int ErrorsReportedHere { get; private set; }
 
-    internal MappingContext Child(string? member, int index) => new(this, member, index);
+    internal MappingContext Child(string? member) => new(this, MappingPathSegment.Member(member));
+
+    internal MappingContext Child(string? member, int index) => new(this, MappingPathSegment.Item(member, index));
 
     /// <summary>Turns the mapping's outcome into a result. Called on the root context.</summary>
-    internal MappingResult<T> Complete<T>(T? value, object producer)
-    {
-        if (_errorsFound == 0)
-            return MappingResult<T>.Success(MappingRules.Produced(value, producer));
-
-        var errors = _errors!.ToList();
-        var leftOut = _errorsFound - errors.Count;
-        if (leftOut > 0)
-        {
-            errors.Add(new MappingError("", MappingErrorCodes.TooManyErrors,
-                $"Only the first {errors.Count} errors are listed; {leftOut} more were found."));
-        }
-
-        if (!HasErrors && value is null && !typeof(T).IsValueType)
-        {
-            throw new InvalidOperationException(
-                $"{MappingRules.Describe(producer)} returned null although its only errors were in items it skipped. " +
-                "Return a value, or report an error that is not skipped.");
-        }
-
-        // The value survives only when every error belonged to a skipped item.
-        var hasPartialValue = !HasErrors;
-        return MappingResult<T>.Failure(hasPartialValue ? value : default, errors, _errorsFound, hasPartialValue);
-    }
+    internal MappingResult<T> Complete<T>(T? value, object producer) => _run.Complete(value, producer, HasErrors);
 
     private void Record(string? member, string code, string message, object? attemptedValue)
     {
@@ -204,32 +172,20 @@ public sealed class MappingContext : IServiceProvider
         if (IsStopped)
             return;
 
-        _root._errorsFound++;
-        if (_root._errors!.Count < Options.MaxErrors)
-            _root._errors.Add(new MappingError(Append(Path, member), code, message, attemptedValue));
+        _run.Record(this, member, code, message, attemptedValue);
 
         var counted = true;
         for (var context = this; context is not null; context = context._parent)
         {
             context.ErrorsReportedHere++;
             if (counted)
-                context._errorCount++;
+                context._activeErrorCount++;
             if (context._skipped)
                 counted = false;
         }
     }
 
-    private string BuildPath()
-    {
-        if (_parent is null)
-            return "";
+    internal string ErrorPath(string? member) => MappingPathSegment.Member(member).AppendTo(Path);
 
-        var path = Append(_parent.Path, _member);
-        return _index < 0 ? path : $"{path}[{_index}]";
-    }
-
-    private static string Append(string path, string? member) =>
-        member is null ? path
-        : path.Length == 0 || member.StartsWith('[') ? path + member
-        : $"{path}.{member}";
+    private string BuildPath() => _parent is null ? "" : _segment.AppendTo(_parent.Path);
 }

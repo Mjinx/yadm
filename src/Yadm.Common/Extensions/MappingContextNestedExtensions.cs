@@ -356,7 +356,7 @@ public static class MappingContextNestedExtensions
         if (context.IsStopped)
             return default!;
 
-        var child = context.Child(MemberName.From(name, expression), -1);
+        var child = context.Child(MemberName.From(name, expression));
         var errorsBefore = context.ErrorsFound;
         var value = await map(state, source, child, cancellationToken).ConfigureAwait(false);
         return Accept(child, value, producer, errorsBefore);
@@ -372,7 +372,7 @@ public static class MappingContextNestedExtensions
         if (MappingRules.IsAbsent(source) || context.IsStopped)
             return null;
 
-        var child = context.Child(MemberName.From(name, expression), -1);
+        var child = context.Child(MemberName.From(name, expression));
         var errorsBefore = context.ErrorsFound;
         var value = await map(state, source, child, cancellationToken).ConfigureAwait(false);
         CheckReportedHere(child, producer, errorsBefore);
@@ -433,7 +433,7 @@ public static class MappingContextNestedExtensions
         if (context.IsStopped)
             return default!;
 
-        var child = context.Child(MemberName.From(name, expression), -1);
+        var child = context.Child(MemberName.From(name, expression));
         var errorsBefore = context.ErrorsFound;
         return Accept(child, map(state, source, child), producer, errorsBefore);
     }
@@ -446,7 +446,7 @@ public static class MappingContextNestedExtensions
         if (MappingRules.IsAbsent(source) || context.IsStopped)
             return null;
 
-        var child = context.Child(MemberName.From(name, expression), -1);
+        var child = context.Child(MemberName.From(name, expression));
         var errorsBefore = context.ErrorsFound;
         var value = map(state, source, child);
         CheckReportedHere(child, producer, errorsBefore);
