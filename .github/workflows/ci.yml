@@ -43,7 +43,6 @@ jobs:
             echo "code=$(has '^(src|tests|benchmarks)/|\.(slnx|props|targets)$|global\.json$|^\.config/|^\.editorconfig$|^\.github/(actions/|coverage-baseline)')"
             echo "pack=$(has '^src/|^Directory\.(Build|Packages)\.props$|^README\.md$|^global\.json$|^\.github/actions/validate-package')"
           } >> "$GITHUB_OUTPUT"
-
   workflows:
     name: Lint workflows
     needs: changes
@@ -51,30 +50,43 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
-
+      - name: Run actionlint
+        shell: bash
+        env:
+          ACTIONLINT_IMAGE: rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+        run: >-
+          docker run --rm
+          -v "$PWD:/repo" -w /repo
+          "$ACTIONLINT_IMAGE" -color
   code:
     name: Build, test, audit
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.pack == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # MinVer needs tags
       - uses: ./.github/actions/setup-dotnet
-      - run: dotnet restore Yadm.slnx
-      - run: dotnet format Yadm.slnx --no-restore --verify-no-changes
-      - run: dotnet build Yadm.slnx -c Release --no-restore
+      - name: Restore, format, and build
+        shell: bash
+        run: |
+          dotnet restore Yadm.slnx
+          dotnet format Yadm.slnx --no-restore --verify-no-changes
+          dotnet build Yadm.slnx -c Release --no-restore
       - name: Test with coverage
-        run: >
-          dotnet test --solution Yadm.slnx -c Release --no-build --results-directory cov
-          -- --coverlet --coverlet-output-format cobertura --coverlet-file-prefix cov
+        shell: bash
+        run: >-
+          dotnet test --solution Yadm.slnx -c Release --no-build
+          --results-directory cov -- --coverlet
+          --coverlet-output-format cobertura --coverlet-file-prefix cov
       - name: Coverage floor
         shell: bash
         run: |
           dotnet tool restore
-          dotnet tool run reportgenerator -reports:"cov/*.xml" -targetdir:cov/report -reporttypes:"JsonSummary;MarkdownSummaryGithub"
+          dotnet tool run reportgenerator \
+            -reports:"cov/*.xml" -targetdir:cov/report \
+            -reporttypes:"JsonSummary;MarkdownSummaryGithub"
           cat cov/report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
           actual=$(jq '.summary.linecoverage' cov/report/Summary.json)
           floor=$(jq '.lineCoverageFloor' .github/coverage-baseline.json)
@@ -91,7 +103,8 @@ jobs:
           fi
       - if: needs.changes.outputs.pack == 'true'
         uses: ./.github/actions/validate-package
-
+        with:
+          args: --no-build
   benchmarks:
     name: Benchmarks (advisory)
     needs: changes
@@ -130,7 +143,6 @@ jobs:
               : '_no results_';
             const body = `### Benchmarks (advisory, short job, shared runner: noisy)\n<details><summary>Base</summary>\n\n${read('bench/base')}\n</details>\n\n**Head**\n\n${read('bench/head')}`;
             await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
-
   required:
     name: required
     if: always()
