@@ -3,7 +3,7 @@ namespace Yadm.Common;
 /// <summary>
 /// Maps a <typeparamref name="TSource"/> to a <typeparamref name="TTarget"/>, reporting every problem it
 /// finds to a <see cref="MappingContext"/>. This is the main contract: implement it once per mapping and
-/// run it with <see cref="Mapper.Map{TSource, TTarget}(IMapper{TSource, TTarget}, TSource, MappingOptions?)"/>.
+/// run it with <see cref="Mapper.Map{TSource, TTarget}(IMapper{TSource, TTarget}, TSource, MappingOptions?, IServiceProvider?)"/>.
 /// </summary>
 /// <typeparam name="TSource">The type to map from, such as a request DTO.</typeparam>
 /// <typeparam name="TTarget">The type to map to, such as a domain model.</typeparam>

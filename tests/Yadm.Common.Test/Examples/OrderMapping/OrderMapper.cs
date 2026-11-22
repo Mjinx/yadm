@@ -90,7 +90,7 @@ public sealed record OrderInput(
     IEnumerable<LineInput>? Lines,
     string? RequestedDeliveryAt = null);
 
-/// <summary>Maps itself, the way an IValidatableObject validates itself.</summary>
+/// <summary>Maps itself.</summary>
 public sealed record AddressInput(string? Street, string? City, string? Postcode) : IMappableObject<Address>
 {
     public Address? Map(MappingContext context)

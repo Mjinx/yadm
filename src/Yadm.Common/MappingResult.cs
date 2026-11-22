@@ -68,8 +68,7 @@ public sealed class MappingResult<T>
         new(partialValue, errors.AsReadOnly(), errorsFound, hasPartialValue);
 
     /// <summary>
-    /// Groups the error messages by path, the shape ASP.NET Core's <c>Results.ValidationProblem</c>
-    /// and <c>ValidationProblemDetails</c> expect.
+    /// Groups the error messages by path: each key is an error path and each value lists its messages.
     /// </summary>
     public IDictionary<string, string[]> ToDictionary() =>
         Errors.GroupBy(error => error.Path, StringComparer.Ordinal)

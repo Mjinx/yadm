@@ -1,8 +1,8 @@
 namespace Yadm.Common;
 
 /// <summary>
-/// Thrown when the <see cref="MappingResult{T}.Value"/> of a failed mapping is read, the way
-/// <c>ValidationException</c> reports failed validation. <see cref="Errors"/> lists every problem found.
+/// Thrown when the <see cref="MappingResult{T}.Value"/> of a failed mapping is read.
+/// <see cref="Errors"/> lists every problem found.
 /// </summary>
 public sealed class MappingException : Exception
 {

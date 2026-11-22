@@ -336,9 +336,9 @@ public class NestedMappingTests
         {
             pets =
             [
-                await context.MapOptionalAsync(src.Missing, mapper, token),
-                await context.MapOptionalAsync(src.Invalid, mapper, token),
-                await context.MapOptionalAsync(src.Valid, mapper, token)
+                await context.MapOptionalAsync(src.Missing, mapper, cancellationToken: token),
+                await context.MapOptionalAsync(src.Invalid, mapper, cancellationToken: token),
+                await context.MapOptionalAsync(src.Valid, mapper, cancellationToken: token)
             ];
             return true;
         }).MapAsync(null);
@@ -370,7 +370,7 @@ public class NestedMappingTests
 
         var result = await Mapper.Create(async (object? _, MappingContext context, CancellationToken token) =>
         {
-            var pet = await context.MapAsync(src.Pet, mapper, token);
+            var pet = await context.MapAsync(src.Pet, mapper, cancellationToken: token);
             pets = await context.MapEachAsync(src.Pets, mapper, cancellationToken: token);
             return pet;
         }).MapAsync(null, cancellation.Token);
@@ -471,7 +471,7 @@ public class NestedMappingTests
 
         var result = await Mapper.Create(async (object? _, MappingContext context, CancellationToken token) =>
         {
-            await context.MapAsync(src.Pet, mapper, "Cat", token);
+            await context.MapAsync(src.Pet, mapper, "Cat", cancellationToken: token);
             await context.MapOptionalAsync(src.Pet, mapper, "Kitten", token);
             await context.MapEachAsync(src.Pets, mapper, name: "Cats", cancellationToken: token);
             await context.MapEachAsync(src.Pets, mapper, skipInvalid: true, name: "Strays", cancellationToken: token);
@@ -487,9 +487,9 @@ public class NestedMappingTests
     {
         var src = new[] { new PetInput("Rex", "3") };
 
-        var result = await Mapper.Create(async (object? _, MappingContext context, CancellationToken _) =>
+        var result = await Mapper.Create(async (object? _, MappingContext context, CancellationToken cts) =>
         {
-            var pets = await context.MapEachAsync(src, new AsyncPetMapper(), default);
+            var pets = await context.MapEachAsync(src, new AsyncPetMapper(), skipInvalid: false, cancellationToken: cts);
             return pets.Single();
         }).MapAsync(null);
 
