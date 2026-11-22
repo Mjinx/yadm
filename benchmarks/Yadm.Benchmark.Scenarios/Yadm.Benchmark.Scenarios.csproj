@@ -4,7 +4,7 @@
     <NoWarn>$(NoWarn);IDE0005;CA2007</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Yadm.Common\Yadm.Common.csproj" />
+    <ProjectReference Include="..\..\src\Yadm\Yadm.csproj" />
     <PackageReference Include="FluentValidation" />
     <PackageReference Include="Riok.Mapperly" PrivateAssets="all" />
   </ItemGroup>

@@ -15,10 +15,14 @@ For JSON input, the separate **Yadm.SystemTextJson** package adds adapters built
 
 See [Yadm and the alternatives](docs/comparison.md) for a short comparison.
 
+> **Status:** Yadm is pre-1.0; its API is still being established and may change between 0.x releases.
+> The libraries currently target .NET 10 and .NET 11. Bug reports and questions go through
+> [GitHub Issues](https://github.com/Mjinx/yadm/issues); support is best-effort, with no response-time promise.
+
 ## Quick start
 
 ```csharp
-using Yadm.Common;
+using Yadm;
 
 // 1. Write a mapper: read the values, check for errors, then build.
 public sealed class AddressMapper : IMapper<AddressDto, Address>
@@ -137,7 +141,7 @@ If a value comes from a local variable, pass a `name` (as in the `Lookup` row) o
 ## Lookups: asynchronous mappers
 
 When mapping needs data, implement `IAsyncMapper` and write three plain sections: check the input, look up what
-it refers to, then build. Shortened from `tests\Yadm.Common.Test\Examples\OrderMapping\OrderMapper.cs`:
+it refers to, then build. Shortened from `tests\Yadm.Test\Examples\OrderMapping\OrderMapper.cs`:
 
 ```csharp
 public sealed class OrderMapper(ICustomerRepository customers, IProductRepository products)
@@ -195,7 +199,8 @@ MappingResult<Pet> first = petMapper.Map(petDto, MappingOptions.FailFast);      
 ```
 
 A `MappingResult<T>` has `IsSuccess`, `Value` (throws `MappingException` when the mapping failed), `Errors`
-(each with `Path`, `Code` and `Message`) and `ToDictionary()` for `Results.ValidationProblem`.
+(each with `Path`, `Code` and `Message`), `ToDictionary()` for `Results.ValidationProblem`, and `ToErrorDetails()` for an
+ordered `Field`/`Code`/`Message` array that omits attempted values.
 `MappingOptions` lets you stop at the first error (`FailFast`), cap the error list (200 by default) and set the
 parsing culture.
 
@@ -272,7 +277,7 @@ through the usual multi-error mapping. Errors never include the raw payload. Run
 
 ## More examples
 
-The test projects contain complete, runnable scenarios: `tests\Yadm.Common.Test\Examples\` (orders with batched
+The test projects contain complete, runnable scenarios: `tests\Yadm.Test\Examples\` (orders with batched
 lookups, expense forms, stock imports that keep valid rows, parent-dependent dispatch plans, custom helpers) and
 `tests\Yadm.SystemTextJson.Test\Examples\`.
 

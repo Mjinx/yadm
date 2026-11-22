@@ -1,5 +1,5 @@
 using Shouldly;
-using Yadm.Common;
+using Yadm;
 
 namespace Yadm.SystemTextJson.Test;
 

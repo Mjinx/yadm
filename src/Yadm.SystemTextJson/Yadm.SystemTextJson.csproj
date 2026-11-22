@@ -2,12 +2,13 @@
 
   <PropertyGroup>
     <Description>System.Text.Json adapters for Yadm's contract-first mappers.</Description>
+    <PackageTags>dotnet;mapping;mapper;json;system-text-json;aot</PackageTags>
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="$(MSBuildProjectName).Test" />
-    <ProjectReference Include="..\Yadm.Common\Yadm.Common.csproj" />
+    <ProjectReference Include="..\Yadm\Yadm.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,4 @@
-using Yadm.Common;
+using Yadm;
 
 namespace Yadm.Benchmark.Scenarios.OrderImportScenario;
 

@@ -11,7 +11,7 @@ dotnet build .\Yadm.slnx
 dotnet test --solution .\Yadm.slnx
 ```
 
-Tests run on Microsoft.Testing.Platform with xUnit.net v3, so `dotnet run --project .\tests\Yadm.Common.Test`
+Tests run on Microsoft.Testing.Platform with xUnit.net v3, so `dotnet run --project .\tests\Yadm.Test`
 also works. Add `--coverlet` to `dotnet test` to collect coverage into `TestResults\`.
 
 `Directory.Build.props` holds the shared build policy (nullable, analyzers, warnings as errors) and `.editorconfig`
@@ -30,8 +30,8 @@ Use `--filter '*RegistrationBenchmarks*'` for the registration comparison only.
 ## Packaging
 
 ```powershell
-dotnet pack .\src\Yadm.Common\Yadm.Common.csproj -c Release -p:Version=0.1.0
-dotnet pack .\src\Yadm.SystemTextJson\Yadm.SystemTextJson.csproj -c Release -p:Version=0.1.0
+dotnet pack .\src\Yadm\Yadm.csproj -c Release
+dotnet pack .\src\Yadm.SystemTextJson\Yadm.SystemTextJson.csproj -c Release
 ```
 
 ## Continuous integration and releases

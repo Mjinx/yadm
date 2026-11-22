@@ -13,12 +13,12 @@
   </Folder>
   <Folder Name="/src/">
     <File Path="src/Directory.Build.props" />
-    <Project Path="src/Yadm.Common/Yadm.Common.csproj" />
+    <Project Path="src/Yadm/Yadm.csproj" />
     <Project Path="src\Yadm.SystemTextJson\Yadm.SystemTextJson.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <File Path="tests/Directory.Build.props" />
-    <Project Path="tests\Yadm.Common.Test\Yadm.Common.Test.csproj" />
+    <Project Path="tests\Yadm.Test\Yadm.Test.csproj" />
     <Project Path="tests\Yadm.SystemTextJson.Test\Yadm.SystemTextJson.Test.csproj" />
   </Folder>
   <Folder Name="/benchmarks/">

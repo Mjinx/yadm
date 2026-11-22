@@ -2,7 +2,7 @@ using System.Globalization;
 using FluentValidation;
 using FluentValidation.Results;
 using Riok.Mapperly.Abstractions;
-using Yadm.Common;
+using Yadm;
 
 namespace Yadm.Benchmark.Scenarios.RegistrationScenario;
 

@@ -2,7 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Shouldly;
-using Yadm.Common;
+using Yadm;
 
 namespace Yadm.SystemTextJson.Test;
 
