@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);IDE0005;CA2007</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Yadm.Common\Yadm.Common.csproj" />
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="Riok.Mapperly" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

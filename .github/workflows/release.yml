@@ -1,0 +1,60 @@
+name: Release
+
+# Tag push is the only release trigger. Private vs public differs only by
+# the NUGET_SOURCE variable and NUGET_API_KEY secret.
+on:
+  push:
+    tags: [ 'v[0-9]+.[0-9]+.[0-9]+*' ]
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      NUGET_SOURCE: ${{ vars.NUGET_SOURCE || format('https://nuget.pkg.github.com/{0}/index.json', github.repository_owner) }}
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY || github.token }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Require tag on main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - uses: ./.github/actions/setup-dotnet
+
+      # Format, build, tests and the vulnerability audit already ran in CI on main.
+
+      # API-compat baseline: latest stable tag of the same major version.
+      - name: Find baseline
+        id: baseline
+        run: |
+          cur="${GITHUB_REF_NAME#v}"
+          prev=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | grep -v -- '-' | grep -vx "v${cur}" | sort -V | tail -n1 || true)
+          if [ -z "$prev" ] || [ "$(echo "${prev#v}" | cut -d. -f1)" != "$(echo "$cur" | cut -d. -f1)" ]; then
+            echo "args=" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          dir="$RUNNER_TEMP/package-baselines"; mkdir -p "$dir"
+          gh release download "$prev" --pattern '*.nupkg' --dir "$dir"
+          echo "args=-p:PackageValidationBaselineVersion=${prev#v} -p:RestoreAdditionalProjectSources=$dir" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/validate-package
+        with:
+          args: ${{ steps.baseline.outputs.args }}
+
+      - name: Publish
+        run: dotnet nuget push "artifacts/packages/*.nupkg" --source "$NUGET_SOURCE" --api-key "$NUGET_API_KEY" --skip-duplicate
+
+      - name: GitHub release
+        run: |
+          flags=""; case "$GITHUB_REF_NAME" in *-*) flags="--prerelease";; esac
+          gh release create "$GITHUB_REF_NAME" $flags --generate-notes --title "Yadm $GITHUB_REF_NAME" --verify-tag artifacts/packages/*

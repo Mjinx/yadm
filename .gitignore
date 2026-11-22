@@ -1,0 +1,21 @@
+# .NET build output
+[Bb]in/
+[Oo]bj/
+/artifacts/
+/packages/
+TestResults/
+BenchmarkDotNet.Artifacts/
+/plans/
+*.nupkg
+*.snupkg
+
+# Visual Studio and Rider user state
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+*.iml
+_ReSharper.Caches/cov/

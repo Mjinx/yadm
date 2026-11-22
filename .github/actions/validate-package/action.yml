@@ -1,0 +1,35 @@
+name: Validate package
+description: Pack all packable projects (deterministic, warnings as errors) and verify package metadata.
+inputs:
+  output:
+    description: Directory to write packages to
+    default: artifacts/packages
+  args:
+    description: Extra dotnet pack arguments (e.g. API baseline)
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Pack
+      shell: bash
+      env:
+        PACK_ARGS: ${{ inputs.args }}
+      run: dotnet pack Yadm.slnx -c Release -o "${{ inputs.output }}" $PACK_ARGS
+    - name: Verify package contents
+      shell: bash
+      run: |
+        set -euo pipefail
+        shopt -s nullglob
+        pkgs=("${{ inputs.output }}"/*.nupkg)
+        [[ ${#pkgs[@]} -gt 0 ]] || { echo "::error::no .nupkg produced"; exit 1; }
+        for pkg in "${pkgs[@]}"; do
+          snupkg="${pkg%.nupkg}.snupkg"
+          [[ -f "$snupkg" ]] || { echo "::error::missing symbol package for $pkg"; exit 1; }
+          list=$(unzip -l "$pkg")
+          nuspec=$(unzip -p "$pkg" '*.nuspec')
+          grep -q 'README.md' <<<"$list" || { echo "::error::$pkg lacks README"; exit 1; }
+          grep -q '<license ' <<<"$nuspec" || { echo "::error::$pkg lacks license"; exit 1; }
+          grep -q '<repository .*url="https://github.com/Mjinx/yadm' <<<"$nuspec" || { echo "::error::$pkg lacks repository url"; exit 1; }
+          unzip -p "$snupkg" '*.pdb' | grep -aq 'raw.githubusercontent.com' || { echo "::error::$snupkg lacks SourceLink"; exit 1; }
+          echo "OK $(basename "$pkg")"
+        done

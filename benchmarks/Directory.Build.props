@@ -1,0 +1,7 @@
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)..\Directory.Build.props" />
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute" />
+  </ItemGroup>
+</Project>

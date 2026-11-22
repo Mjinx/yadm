@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>System.Text.Json adapters for Yadm's contract-first mappers.</Description>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="$(MSBuildProjectName).Test" />
+    <ProjectReference Include="..\Yadm.Common\Yadm.Common.csproj" />
+  </ItemGroup>
+
+</Project>

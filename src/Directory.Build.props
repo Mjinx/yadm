@@ -1,0 +1,56 @@
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)..\Directory.Build.props" />
+
+  <PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
+  <!-- Packaging is opt-in per project so future applications do not accidentally
+       ship. Run dotnet pack explicitly rather than on every build.
+       PackageId defaults to the project name; Description belongs in each library
+       project. Version comes from git tags (MinVer). -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>mapping;mapper;validation</PackageTags>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <EnablePackageValidation>true</EnablePackageValidation>
+  </PropertyGroup>
+
+  <!-- Keep release metadata synchronized with the repository.
+       SDK Source Link support uses the Git remote. The release workflow supplies
+       PackageValidationBaselineVersion (previous stable release).
+  -->
+  <PropertyGroup>
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+    <Authors>Mjinx</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Mjinx/yadm</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Mjinx/yadm</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <!-- MinVer defaults AssemblyVersion to major.0.0.0 (0.0.0.0 for 0.x), which breaks
+       package validation against baselines. Use major.minor.0.0 instead. -->
+  <Target Name="YadmAssemblyVersion" AfterTargets="MinVer">
+    <PropertyGroup>
+      <AssemblyVersion>$(MinVerMajor).$(MinVerMinor).0.0</AssemblyVersion>
+    </PropertyGroup>
+  </Target>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+    <PackageReference Include="MinVer" PrivateAssets="All" />
+  </ItemGroup>
+</Project>
