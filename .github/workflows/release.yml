@@ -1,7 +1,7 @@
 name: Release
 
-# Tag push is the only release trigger. Private vs public differs only by
-# the NUGET_SOURCE variable and NUGET_API_KEY secret.
+# Tag pushes publish to both GitHub Packages and NuGet.org. NuGet.org uses
+# short-lived OIDC credentials; GitHub Packages uses the workflow token.
 on:
   push:
     tags: [ 'v[0-9]+.[0-9]+.[0-9]+*' ]
@@ -9,6 +9,7 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -18,8 +19,8 @@ jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      NUGET_SOURCE: ${{ vars.NUGET_SOURCE || format('https://nuget.pkg.github.com/{0}/index.json', github.repository_owner) }}
-      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY || github.token }}
+      GITHUB_PACKAGES_SOURCE: ${{ format('https://nuget.pkg.github.com/{0}/index.json', github.repository_owner) }}
+      GITHUB_PACKAGES_API_KEY: ${{ github.token }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
@@ -51,8 +52,21 @@ jobs:
         with:
           args: ${{ steps.baseline.outputs.args }}
 
-      - name: Publish
-        run: dotnet nuget push "artifacts/packages/*.nupkg" --source "$NUGET_SOURCE" --api-key "$NUGET_API_KEY" --skip-duplicate
+      - name: NuGet.org login
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Publish to NuGet.org
+        run: >-
+          dotnet nuget push "artifacts/packages/*.nupkg"
+          --source https://api.nuget.org/v3/index.json
+          --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+          --skip-duplicate
+
+      - name: Publish to GitHub Packages
+        run: dotnet nuget push "artifacts/packages/*.nupkg" --source "$GITHUB_PACKAGES_SOURCE" --api-key "$GITHUB_PACKAGES_API_KEY" --skip-duplicate
 
       - name: GitHub release
         run: |

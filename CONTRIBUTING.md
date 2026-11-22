@@ -40,5 +40,6 @@ dotnet pack .\src\Yadm.SystemTextJson\Yadm.SystemTextJson.csproj -c Release
 and package validation. Label a PR `ci:benchmark` for an advisory benchmark comment.
 
 Releases are tag-driven and versioned by MinVer: `git tag vX.Y.Z && git push --tags` on `main`. The release
-workflow tests, packs and publishes to GitHub Packages by default; set the `NUGET_SOURCE` variable and
-`NUGET_API_KEY` secret to publish to nuget.org.
+workflow validates, packs, and publishes to GitHub Packages and nuget.org. NuGet.org publishing uses Trusted
+Publishing with `NUGET_USER`; it does not use a long-lived API-key secret. Configure the nuget.org policy for the
+`Mjinx/yadm` repository and `.github/workflows/release.yml` workflow before publishing the first public version.

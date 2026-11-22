@@ -13,7 +13,13 @@ Why use it:
 
 For JSON input, the separate **Yadm.SystemTextJson** package adds adapters built on System.Text.Json.
 
-See [Yadm and the alternatives](docs/comparison.md) for a short comparison.
+See [Yadm and the alternatives](https://github.com/Mjinx/yadm/blob/main/docs/comparison.md) for a short comparison.
+
+```powershell
+dotnet add package Yadm
+# Optional System.Text.Json adapters:
+dotnet add package Yadm.SystemTextJson
+```
 
 > **Status:** Yadm is pre-1.0; its API is still being established and may change between 0.x releases.
 > The libraries currently target .NET 10 and .NET 11. Bug reports and questions go through
