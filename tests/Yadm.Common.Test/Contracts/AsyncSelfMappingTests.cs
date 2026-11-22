@@ -48,8 +48,8 @@ public class AsyncSelfMappingTests
 
         var result = await Mapper.Create(async (object? _, MappingContext context, CancellationToken token) =>
         {
-            var child = await context.MapAsync(src.Child, token);
-            (await context.MapOptionalAsync(src.Missing, token)).ShouldBeNull();
+            var child = await context.MapAsync(src.Child, cancellationToken: token);
+            (await context.MapOptionalAsync(src.Missing, cancellationToken: token)).ShouldBeNull();
             var items = await context.MapEachAsync(src.Items, cancellationToken: token);
             return new Batch(child, items);
         }).MapAsync(null);
@@ -70,8 +70,8 @@ public class AsyncSelfMappingTests
 
         var result = await Mapper.Create(async (object? _, MappingContext context, CancellationToken token) =>
         {
-            await context.MapAsync(src.Child, token);
-            await context.MapOptionalAsync(src.Optional, token);
+            await context.MapAsync(src.Child, cancellationToken: token);
+            await context.MapOptionalAsync(src.Optional, cancellationToken: token);
             await context.MapEachAsync(src.Items, cancellationToken: token);
             return true;
         }).MapAsync(null);
@@ -89,13 +89,13 @@ public class AsyncSelfMappingTests
         await Should.ThrowAsync<InvalidOperationException>(() => Mapper.Create(
                 async (object? _, MappingContext context, CancellationToken token) =>
                 {
-                    await context.MapAsync(nullSource, token);
+                    await context.MapAsync(nullSource, cancellationToken: token);
                     return true;
                 }).MapAsync(null).AsTask());
 
         var optional = await Mapper.Create(async (object? _, MappingContext context, CancellationToken token) =>
         {
-            (await context.MapOptionalAsync(nullSource, token)).ShouldBeNull();
+            (await context.MapOptionalAsync(nullSource, cancellationToken: token)).ShouldBeNull();
             return true;
         }).MapAsync(null);
         optional.IsSuccess.ShouldBeTrue();
@@ -115,7 +115,7 @@ public class AsyncSelfMappingTests
                         context.AddError("WrongContext", "Reported to the parent.");
                         return ValueTask.FromResult<Target?>(new Target(child.Path, child.Options, cancellationToken));
                     };
-                    await context.MapAsync(source, token);
+                    await context.MapAsync(source, cancellationToken: token);
                     return true;
                 }).MapAsync(null).AsTask());
 
@@ -180,7 +180,7 @@ public class AsyncSelfMappingTests
 
         var result = await Mapper.Create(async (object? _, MappingContext context, CancellationToken token) =>
         {
-            await context.MapAsync(child, "NamedChild", token);
+            await context.MapAsync(child, "NamedChild", cancellationToken: token);
             await context.MapOptionalAsync(optional, "NamedOptional", token);
             await context.MapEachAsync(items, name: "NamedItems", cancellationToken: token);
             return true;
@@ -226,9 +226,9 @@ public class AsyncSelfMappingTests
     [Fact]
     public async Task AsyncSelfCollectionDefaultUsesTheSingleCanonicalOptionsOverload()
     {
-        var result = await Mapper.Create(async (object? _, MappingContext context, CancellationToken _) =>
+        var result = await Mapper.Create(async (object? _, MappingContext context, CancellationToken cts) =>
         {
-            var mapped = await context.MapEachAsync([Item("root")], default);
+            var mapped = await context.MapEachAsync([Item("root")], skipInvalid: false, cancellationToken: cts);
             return mapped.Single();
         }).MapAsync(null);
 

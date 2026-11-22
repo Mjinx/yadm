@@ -5,7 +5,7 @@ namespace Yadm.Common;
 
 /// <summary>
 /// Parses <typeparamref name="TInput"/> in a way <see cref="IParsable{TSelf}"/> does not cover, such as a custom
-/// date format. Same shape as the .NET <c>TryParse</c> methods, so those can be passed directly:
+/// date format. Same shape as the <c>TryParse</c> methods of the built-in types, so those can be passed directly:
 /// <c>(string s, out DateOnly d) =&gt; DateOnly.TryParseExact(s, "dd/MM/yyyy", out d)</c>.
 /// Return <see langword="false"/> for invalid input. A true result must contain a usable required reference value.
 /// </summary>
@@ -20,7 +20,7 @@ public delegate bool TryParser<in TInput, TOutput>(
 /// <remarks>
 /// <para>Each helper reports a problem at the member its argument names, so
 /// <c>context.Parse&lt;int&gt;(line.Quantity)</c> reports at <c>Quantity</c>. Pass <c>name</c> to choose another
-/// name. Null, empty and whitespace strings count as absent, as with DataAnnotations' <c>[Required]</c>.</para>
+/// name. Null, empty and whitespace strings count as absent.</para>
 /// <para>After reporting a problem a helper returns <see langword="default"/>. Read values into locals, check
 /// <see cref="MappingContext.HasErrors"/>, then use them. When a rule needs one value before you check, use the
 /// <c>Try</c> twin: it reports the same problem and tells you whether the value is usable.</para>

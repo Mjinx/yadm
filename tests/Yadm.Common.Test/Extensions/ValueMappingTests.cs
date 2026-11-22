@@ -330,6 +330,25 @@ public class ValueMappingTests
             "The value is not a valid OrderType. Expected one of: Standard, Express, Collection.", text));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t")]
+    public void ParseRejectsAbsentEnumText(string? text)
+    {
+        var errors = TestMapping.Errors(context =>
+        {
+            context.Parse<OrderType>(text, "Type").ShouldBe(default);
+            context.TryParse<OrderType>(text, out var result, "Type").ShouldBeFalse();
+            result.ShouldBe(default);
+        });
+
+        errors.ShouldBe([
+            new MappingError("Type", Required, "A value is required.", text),
+            new MappingError("Type", Required, "A value is required.", text)
+        ]);
+    }
+
     [Fact]
     public void FlagCombinationsMustBeDeclaredMembers()
     {

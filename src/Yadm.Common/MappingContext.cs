@@ -3,8 +3,8 @@ using System.Runtime.CompilerServices;
 namespace Yadm.Common;
 
 /// <summary>
-/// The state of one mapping: where in the source the mapper is, and which errors were found. It plays the
-/// role <c>ValidationContext</c> plays for validation, and is passed to every <see cref="IMapper{TSource, TTarget}"/>.
+/// The state of one mapping: where in the source the mapper is, and which errors were found. It is
+/// passed to every <see cref="IMapper{TSource, TTarget}"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -16,11 +16,14 @@ namespace Yadm.Common;
 /// Custom helpers can be written the same way, using only the public members of this class. Built-in helpers stop
 /// doing their own work after a fail-fast error, but caller argument evaluation and arbitrary mapper code are outside
 /// that boundary.</para>
+/// <para>The context is an <see cref="IServiceProvider"/>. Supplying one to the
+/// mapping entry points is optional; without it <see cref="GetService"/> returns <see langword="null"/>.</para>
 /// <para>A context is not thread-safe; map items one at a time.</para>
 /// </remarks>
-public sealed class MappingContext
+public sealed class MappingContext : IServiceProvider
 {
     private readonly MappingContext _root;
+    private Func<Type, object?>? _serviceProvider;
     private readonly MappingContext? _parent;
     private readonly List<MappingError>? _errors;
     private readonly string? _member;
@@ -29,12 +32,14 @@ public sealed class MappingContext
     private int _errorsFound;
     private bool _skipped;
 
-    internal MappingContext(MappingOptions? options)
+    internal MappingContext(MappingOptions? options, IServiceProvider? serviceProvider = null)
     {
         Options = options ?? MappingOptions.Default;
         _root = this;
         _errors = [];
         _index = -1;
+        if (serviceProvider is not null)
+            InitializeServiceProvider(serviceProvider.GetService);
     }
 
     private MappingContext(MappingContext parent, string? member, int index)
@@ -64,6 +69,26 @@ public sealed class MappingContext
     /// recorded, and built-in helpers and collection mappings do no further work.
     /// </summary>
     public bool IsStopped => Options.StopOnFirstError && _root._errorsFound > 0;
+
+    /// <summary>
+    /// Initializes the mapping with a service provider that <see cref="GetService"/> uses. The provider is shared by this context and every
+    /// context nested in it, whichever of them it is called on.
+    /// </summary>
+    /// <param name="serviceProvider">Returns the service for a type, or <see langword="null"/> when it has none.</param>
+    public void InitializeServiceProvider(Func<Type, object?> serviceProvider)
+    {
+        ArgumentNullException.ThrowIfNull(serviceProvider);
+        _root._serviceProvider = serviceProvider;
+    }
+
+    /// <summary>
+    /// Gets a service, so a source that maps itself (<see cref="IMappableObject{TTarget}"/>,
+    /// <see cref="IAsyncMappableObject{TTarget}"/>) can reach its dependencies. See
+    /// <see cref="IServiceProvider.GetService(Type)"/>.
+    /// </summary>
+    /// <param name="serviceType">The type of the service needed.</param>
+    /// <returns>The service, or <see langword="null"/> when no provider was supplied or it has no such service.</returns>
+    public object? GetService(Type serviceType) => _root._serviceProvider?.Invoke(serviceType);
 
     /// <summary>Creates a child context, so errors reported to it are located under <paramref name="member"/>.</summary>
     /// <param name="member">The member name, such as <c>ShipTo</c>.</param>

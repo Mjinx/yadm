@@ -8,7 +8,7 @@ internal static class MappingRules
 {
     public const string RequiredMessage = "A value is required.";
 
-    /// <summary>Null, empty and whitespace strings are absent, as with DataAnnotations' <c>[Required]</c>.</summary>
+    /// <summary>Null, empty and whitespace strings are absent.</summary>
     public static bool IsAbsent<T>([NotNullWhen(false)] T? value) =>
         value is null ||
         (

@@ -2,16 +2,10 @@ namespace Yadm.Common;
 
 /// <summary>
 /// A source object that asynchronously maps itself to a <typeparamref name="TTarget"/> when the mapping needs
-/// I/O, such as looking up entities the source refers to.
+/// I/O, such as looking up entities the source refers to. Its dependencies are reached through the context, which
+/// is an <see cref="IServiceProvider"/> supplied when the mapping is run (see <see cref="MappingContext.GetService"/>).
 /// </summary>
 /// <typeparam name="TTarget">The type the object maps to.</typeparam>
-/// <remarks>
-/// This contract is independent of <see cref="IMappableObject{TTarget}"/>: async-only objects need not implement a
-/// synchronous method. Run it with
-/// <see cref="Mapper.MapAsync{TTarget}(IAsyncMappableObject{TTarget}, CancellationToken)"/>, or nest it with
-/// <see cref="MappingContextNestedExtensions.MapAsync{TTarget}(MappingContext, IAsyncMappableObject{TTarget}?,
-/// CancellationToken, string)"/>. Callers select the synchronous or asynchronous contract explicitly.
-/// </remarks>
 public interface IAsyncMappableObject<TTarget>
 {
     /// <summary>Asynchronously maps this object, reporting problems to <paramref name="context"/>.</summary>

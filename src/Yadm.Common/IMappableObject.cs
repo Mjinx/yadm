@@ -1,12 +1,12 @@
 namespace Yadm.Common;
 
 /// <summary>
-/// A source object that maps itself to a <typeparamref name="TTarget"/>, the way
-/// <c>IValidatableObject</c> validates itself. Useful for DTOs that always map to the same model.
+/// A source object that maps itself to a <typeparamref name="TTarget"/>. Useful for DTOs that always map to the
+/// same model.
 /// </summary>
 /// <typeparam name="TTarget">The type the object maps to.</typeparam>
 /// <remarks>
-/// Run it with <see cref="Mapper.Map{TTarget}(IMappableObject{TTarget}, MappingOptions?)"/>, or nest it with
+/// Run it with <see cref="Mapper.Map{TTarget}(IMappableObject{TTarget}, MappingOptions?, IServiceProvider?)"/>, or nest it with
 /// <see cref="MappingContextNestedExtensions.Map{TTarget}(MappingContext, IMappableObject{TTarget}?, string?, string)"/>.
 /// Objects that need asynchronous work can implement <see cref="IAsyncMappableObject{TTarget}"/> instead, or both
 /// contracts when both operations are meaningful.

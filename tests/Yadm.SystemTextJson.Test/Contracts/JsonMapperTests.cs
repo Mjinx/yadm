@@ -162,7 +162,7 @@ public class JsonMapperTests
         });
         var adapter = new AsyncJsonInputMapper<MessageInput, string>(MessageJsonContext.Default.MessageInput, inner);
         var outer = Mapper.Create<Envelope, string>(async (input, context, token) =>
-            await context.MapAsync(input.Payload, adapter, token));
+            await context.MapAsync(input.Payload, adapter, cancellationToken: token));
 
         var result = await outer.MapAsync(new Envelope("{}"), cancellation.Token);
 

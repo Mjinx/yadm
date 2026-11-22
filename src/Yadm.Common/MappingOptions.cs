@@ -17,12 +17,12 @@ public sealed record MappingOptions
     /// evaluation, arbitrary mapper statements, loops and I/O still require explicit <see cref="MappingContext.IsStopped"/>
     /// checks. Defaults to false, which collects every error.
     /// </summary>
-    public bool StopOnFirstError { get; init; }
+    public bool StopOnFirstError { get; private init; }
 
     /// <summary>
     /// The number of errors a result lists. Mapping continues past it: further errors are counted but not listed,
     /// and one final <see cref="MappingErrorCodes.TooManyErrors"/> error says how many were left out. Defaults to 200,
-    /// the limit ASP.NET Core applies to model validation, so hostile input cannot produce huge error lists.
+    /// so hostile input cannot produce huge error lists.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is less than 1.</exception>
     public int MaxErrors
